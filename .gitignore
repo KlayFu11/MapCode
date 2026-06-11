@@ -1,0 +1,22 @@
+# Ignore everything by default
+*
+
+# Keep gitignore itself
+!.gitignore
+
+# Keep root docs / agent rules
+!README.md
+!AGENT.md
+
+
+# Keep selected source directories
+!pico/
+!pico/**
+
+!aider/
+!aider/**
+
+!pico_origin/
+!pico_origin/**
+
+!.gitattributes
