@@ -57,7 +57,7 @@ Engine 是当前 run 的控制面：
 - 直接发送由控制决策产生的 `map_selector_requested` 和 `map_focus_confirmed` trace。
 - 决定何时进入 Pico 主模型/tool loop。
 
-selector 模型能力和用户交互能力由 runtime/provider 提供，Engine 只负责编排。
+selector 模型能力和用户交互能力由 runtime/provider 提供，Engine 只负责编排。selector 请求必须保持 provider 原生的 `system` / `user` 角色分离；Pico 主模型仍接收 ContextManager 构造的单一组合 prompt，不新增 provider-level system prompt。
 v1.3 selector 暂时复用主 Pico loop 的同一模型，后续可以替换为更轻量模型；是否降低总 token 成本由 retrieval eval 验证。
 
 ### 3.2 数据面
@@ -195,11 +195,15 @@ v1 不定义含义不明确的 `selection_score`。
 
 ```text
 当前 SymbolIndex snapshot
-  -> MapEngine 生成全量校验路径集合 + 预算受控 definition 摘要
+  -> MapEngine 生成完整 snapshot provenance 路径 + 预算受控 definition 摘要
   -> SelectorCandidateCatalog
-  -> selector 结合 original prompt + broad map 分析
+  -> Engine 组装 SelectorModelRequest
+       system_prompt = 固定 JSON 输出和文件选择约束
+       user_prompt = original_user_message + broad repo map + rendered candidate catalog
+       visible_paths = stable union(broad rendered files, catalog rendered paths)
+  -> runtime/provider 按 system / user 角色调用 selector
   -> selector 输出
-  + 路径校验
+  + 对 visible_paths 做路径校验
   + 用户确认或 fallback
   -> Engine
   -> SelectionDecision
@@ -207,15 +211,22 @@ v1 不定义含义不明确的 `selection_score`。
 
 包含：
 
-- `candidate_paths`：当前 snapshot 中全部已索引 Python 文件路径，只用于校验 selector 输出。
+- `candidate_paths`：当前 snapshot 中全部已索引 Python 文件路径，只证明候选目录来自当前 snapshot，不表示 selector 看见了这些路径，也不直接作为 selector 输出白名单。
 - `rendered_text`：受 `SELECTOR_CATALOG_MAX_TOKENS`、`SELECTOR_CATALOG_MAX_FILES` 和 `SELECTOR_CATALOG_MAX_DEFS_PER_FILE` 约束的候选目录文本。
 - `rendered_paths`：实际出现在 `rendered_text` 中的路径，是 `candidate_paths` 的有序子集。
+- `SelectorModelRequest.system_prompt`：固定 selector system prompt，要求只返回精确 JSON 对象并限制选择规则。
+- `SelectorModelRequest.user_prompt`：按 `[User Request]`、`[Broad Repo Map]`、`[Selector Candidate Catalog]` 三段组装的动态输入。
+- `SelectorModelRequest.visible_paths`：`broad_result.rendered_files` 与 `selector_catalog.rendered_paths` 的稳定有序并集，是 selector 输出唯一允许集合。
 - 路径校验后保存在 `SelectorResult.suggested_files` 中的有效建议文件。
 - 超过 `MAX_SELECTOR_SUGGESTED_FILES` 的额外有效路径进入 `SelectorResult.excess_files`。
 - 无效建议路径。
 - 用户确认文件。
 - 是否使用 broad fallback。
 - fallback 原因。
+
+`SelectorModelRequest.system_prompt`、`user_prompt` 的精确文本与 `{max_selector_suggested_files}` 替换规则以 `SPEC_v1_3.md` 第 5.3 节为唯一权威；本 FuncFlow 只描述角色边界、数据来源和流转顺序，避免复制两份 prompt 后产生漂移。
+
+`original_user_message` 表示当前 turn 的原始 `user_message` 输入值，在 selector 和 normal broad fallback 中保持不变；它不是新的 DTO，也不表示要求用户再次输入。
 
 Branch B v1 只允许：
 
@@ -527,24 +538,29 @@ Engine 收到 broad MapResult
   │    └─ 此时 artifact 尚未落盘，不展示 evidence artifact path
   │
   ├─ Coordinator 调 MapEngine.build_selector_catalog()
-  │    └─ 从同一 SymbolIndex snapshot 生成全量校验路径集合和预算受控候选目录
+  │    └─ 从同一 SymbolIndex snapshot 生成完整 provenance 路径和预算受控候选目录
   │
-  ├─ Engine 构造 selector 输入
-  │    └─ original user_message + broad repo map + SelectorCandidateCatalog.rendered_text
+  ├─ Engine 构造 SelectorModelRequest
+  │    ├─ system_prompt = 固定 JSON 输出和文件选择约束
+  │    ├─ user_prompt = [User Request] + [Broad Repo Map] + [Selector Candidate Catalog]
+  │    └─ visible_paths = stable union(
+  │         broad_result.rendered_files,
+  │         selector_catalog.rendered_paths
+  │       )
   │
-  ├─ [selector 输入超过 ModelRequestBudget]
+  ├─ [完整 SelectorModelRequest 超过 ModelRequestBudget]
   │    ├─ 不发送 map_selector_requested
   │    ├─ 不递增 TaskState.selector_model_calls
   │    └─ Engine 形成 SelectionDecision.broad_fallback(selector_request_over_budget)
   │
-  └─ [selector 输入通过预算门禁]
+  └─ [完整 SelectorModelRequest 通过预算门禁]
        ├─ Engine 直接调 runtime.emit_trace(map_selector_requested)
        ├─ TaskState.selector_model_calls += 1
-       ├─ Engine 使用 runtime/provider 发起 selector LLM 调用
+       ├─ Engine 使用 runtime/provider 按 system_prompt / user_prompt 角色发起 selector LLM 调用
   │
        ├─ MapSelector helper 解析并校验结构化输出
-       │    ├─ 只允许返回 SelectorCandidateCatalog.candidate_paths 中存在的 repo-relative path
-       │    ├─ 可建议未进入 broad map、但存在于当前 SymbolIndex snapshot 的文件
+       │    ├─ 只允许返回 SelectorModelRequest.visible_paths 中存在的 repo-relative path
+       │    ├─ 可建议未进入 broad map、但实际出现在 Selector Candidate Catalog 中的文件
        │    ├─ suggested_files（前 `MAX_SELECTOR_SUGGESTED_FILES` 个有效建议）
        │    ├─ excess_files
        │    ├─ invalid_files
@@ -570,7 +586,7 @@ Engine 收到 broad MapResult
             └─ Engine 形成 SelectionDecision.broad_fallback(selector_no_valid_files)
 ```
 
-Branch B v1 不允许用户部分接受、增加、删除或调整建议文件。只要 selector 实际调用过，最终 `SelectionDecision.selector_result` 就保留该次解析和校验结果。
+Branch B v1 不允许用户部分接受、增加、删除或调整建议文件。只要 selector 实际调用过，最终 `SelectionDecision.selector_result` 就保留该次解析和校验结果。selector 没有有效建议或用户拒绝建议时，Engine 直接复用 `original_user_message` 和已经生成的 broad map 继续主模型流程，不重跑 selector、不重新询问用户，也不要求用户重新输入 prompt。
 
 阶段二由 Engine 把已经形成的 `SelectionDecision` 交给 Coordinator：
 
@@ -651,6 +667,8 @@ Branch B broad MapResult 已生成
 
 fallback 的最终用户可见摘要必须在主模型调用前展示，明确标记 `active result = broad` 和 fallback reason。
 
+所有正常 broad fallback 都复用 `original_user_message` 和已经生成的 broad map：不重跑 selector、不重新询问用户，也不要求用户重新输入 prompt。
+
 进入主模型 prompt 时，所有 broad fallback 使用同一条准确状态提示：
 
 ```text
@@ -670,12 +688,14 @@ runtime.current_map_context = prepared MapContextResult
        │
        └─ ContextManager.build(..., purpose="main_model")
             ├─ 读取 current_map_context.active_result.repo_map_text
+            ├─ 从 active_result.focus_fnames 派生 focus_files_display
+            ├─ 从 active_result.repo_map_text 派生 active_repo_map_text
             ├─ 读取 runtime.model_request_budget
             ├─ 构造独立 repo_map section
             │    ├─ map_context_prompt 生成固定导航安全契约
             │    ├─ 根据 Branch / Mode / focus 生成状态行
             │    ├─ broad fallback 时加入统一 fallback notice
-            │    └─ 拼接候选 repo map body
+            │    └─ 拼接 active_repo_map_text
             ├─ 估算完整 repo_map section token
             ├─ 为 repo_map section 预留输入空间
             ├─ 仅缩减 prefix / memory / history / current_request 等原有 section
@@ -735,7 +755,7 @@ runtime.current_map_context = prepared MapContextResult
 | 文本 | 含义 | 保存位置 |
 |---|---|---|
 | MapEngine 候选 repo map | 在 MapEngine 独立 token budget 内生成 | `MapResult.repo_map_text` |
-| 导航安全契约 | 告诉主模型 repo map 只用于导航、必须 `read_file`、不满足 freshness | `map_context_prompt` 生成，随 repo_map section 注入 |
+| 导航安全契约 | 告诉主模型 repo map 只用于导航、必须 `read_file` 完整文件、不满足 freshness；Branch A、Branch B focused 和 Branch B broad fallback 共用同一模板 | `map_context_prompt` 生成，随 repo_map section 注入 |
 | 最终实际注入 repo map section | 完整导航安全契约 + 动态状态行 + MapEngine 独立 token budget 已裁剪的 map body；若因预算降级被整段省略，则为空文本并由 evidence 解释原因 | `repo-map-001.txt` 与 finalized `MapContextResult` |
 
 只有完整证据链落盘成功后，含 repo map 的 prompt 才能发送给主模型。`map_generated` trace 在 artifact 成功写入后发送；`prompt_built` trace 随后记录当前真正将用于主模型请求的 prompt，因此 trace 顺序可以是 `map_generated -> prompt_built -> model_requested`，但 prompt build 操作本身发生在 artifact 写入之前。
@@ -1026,20 +1046,24 @@ PromptAnalysis(branch=fuzzy)
 
 ```text
 Coordinator 调 MapEngine.build_selector_catalog()
-  -> 使用同一 SymbolIndex snapshot 生成全量校验路径集合和预算受控目录
-  -> Engine 组装完整 selector prompt
-  -> [selector prompt 超过 ModelRequestBudget]
+  -> 使用同一 SymbolIndex snapshot 生成完整 provenance 路径和预算受控目录
+  -> Engine 组装 SelectorModelRequest
+       system_prompt = 固定 JSON 输出和文件选择约束
+       user_prompt = original_user_message + broad map + rendered candidate catalog
+       visible_paths = stable union(broad rendered files, catalog rendered paths)
+  -> [完整 SelectorModelRequest 超过 ModelRequestBudget]
   ->    selector_request_over_budget broad fallback
-  -> [selector prompt 通过预算门禁]
+  -> [完整 SelectorModelRequest 通过预算门禁]
   ->    Engine 直接调 runtime.emit_trace(map_selector_requested)
-  ->    Engine 使用 original prompt + broad map + SelectorCandidateCatalog 发起 selector LLM 调用
+  ->    Engine 使用 runtime/provider 按 system_prompt / user_prompt 角色发起 selector LLM 调用
   ->    selector 返回结构化文件建议
-  ->    MapSelector 只接受 SelectorCandidateCatalog.candidate_paths 中存在的路径
-  ->    selector 可建议未进入 broad map、但存在于当前 SymbolIndex snapshot 的文件
+  ->    MapSelector 只接受 SelectorModelRequest.visible_paths 中存在的路径
+  ->    selector 可建议未进入 broad map、但实际出现在 Selector Candidate Catalog 中的文件
   ->    无有效 suggested_files：selector_no_valid_files broad fallback
   ->    有有效 suggested_files：Engine 调 runtime.ask_user(["接受全部建议", "使用 broad map"])
   ->    接受全部建议且 confirmed files 非空：Engine 直接调 runtime.emit_trace(map_focus_confirmed)
   ->    使用 broad map / Esc / 未知值：形成对应 broad fallback reason
+  ->    所有 broad fallback 复用 original_user_message 和 broad map，不重跑 selector、不重新询问用户、不要求重新输入 prompt
   ->    Engine 形成 SelectionDecision
 ```
 
@@ -1140,27 +1164,30 @@ repo map 紧贴当前请求之前，作为本轮导航信息。
 
 ### 10.4 导航安全契约与最终格式
 
-repo map 不是完整源码。只要当前 run 存在 `MapContextResult`，ContextManager 就必须在 map body 前注入固定导航安全契约：
+repo map 不是完整源码。只要当前 run 存在 `MapContextResult`，ContextManager 就必须在 map body 前注入固定导航安全契约。Branch A、Branch B focused 和 Branch B broad fallback 共用同一模板：
 
 ```text
 [Repo Map - Navigation Context Only]
-The following repo map contains selected structural signatures, not complete or authoritative file contents.
+The following repo map shows selected code-structure signatures only, not complete or authoritative file contents.
 Use it only to decide which files and symbols to inspect.
-Before relying on implementation details or editing any existing file, use read_file to inspect the current source.
+Do not treat repo map snippets as authoritative full file content.
+Before relying on implementation details or editing any existing file, use read_file to inspect the complete current source.
 Repo map content does not satisfy Pico's prior-read or freshness requirement.
 
 Branch: {branch}
 Mode: {focused | broad_fallback}
-Focus files to inspect first: {focus_fnames | none}
+Focus files (read these first): {focus_files_display}
 {fallback_notice_if_present}
 
-{repo_map_text}
+{active_repo_map_text}
 ```
 
-它是 repo_map section 内的安全契约，不是 Pico 全局 prefix：
+它是 repo_map section 内的安全契约，不是 Pico 全局 prefix，也不是主模型的 provider-level system prompt。selector 的 provider-level system prompt 是独立例外，只用于 selector LLM：
 
 - MapEngine 禁用、MapContext 整体失败或当前 run 没有 map 时，不注入该契约。
-- `Focus files to inspect first` 只是读取优先级，不表示文件已读取或可直接编辑。
+- `focus_files_display` 只从 `current_map_context.active_result.focus_fnames` 派生，只表示读取优先级，不表示文件已读取或可直接编辑。
+- `active_repo_map_text` 只从 `current_map_context.active_result.repo_map_text` 派生。
+- 不使用来源模糊的 `focused_repo_map_string` 或 `focus_fnames_list` 作为模板变量。
 - focused 模式不显示 fallback notice。
 - broad fallback 显示：
 
@@ -1528,7 +1555,7 @@ OR 建议路径全部无效
   -> 不发送 map_context_failed
   -> 继续主模型
 
-selector prompt 超过 ModelRequestBudget
+完整 SelectorModelRequest 超过 ModelRequestBudget
   -> selector_request_over_budget broad fallback
   -> 不发送 map_selector_requested
   -> 不递增 selector_model_calls
@@ -1547,6 +1574,8 @@ ask_user 返回未知值
 所有正常 broad fallback
   -> 不发送 map_context_failed
   -> 主模型 repo_map section 显示统一 broad fallback notice
+  -> 复用 original_user_message 和已经生成的 broad map
+  -> 不重跑 selector、不重新询问用户、不要求用户重新输入 prompt
   -> 继续主模型
 ```
 
@@ -1728,4 +1757,8 @@ Pico 完成任务
 12. broad fallback 明确说明未形成 confirmed focus，但不错误声称 selector 没有识别出文件。
 13. MapContext 不存在时，不向 Pico 全局 prefix 或主 prompt 注入空导航契约。
 14. repo map 注入证据落盘失败时，系统丢弃含 map prompt、重建无 repo map prompt，并继续 Pico。
-15. 主模型不会使用无法由完整 repo map artifact、evidence artifact 和 run 摘要共同证明的 repo map。
+15. selector 请求按 provider-level `system_prompt` / `user_prompt` 角色发送，完整请求通过 `ModelRequestBudget` 门禁。
+16. selector 只接受实际展示在 broad map 或 Selector Candidate Catalog 中的 `visible_paths`。
+17. Branch A、Branch B focused 和 Branch B broad fallback 使用同一主模型导航契约模板。
+18. selector 无有效建议或用户拒绝建议时，系统不重跑 selector、不重新询问用户，也不要求重新输入 prompt。
+19. 主模型不会使用无法由完整 repo map artifact、evidence artifact 和 run 摘要共同证明的 repo map。
