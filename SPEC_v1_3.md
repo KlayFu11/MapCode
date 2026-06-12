@@ -286,6 +286,19 @@ def render_selector_confirmation(valid_files: tuple[str, ...]) -> str: ...
 `build_selector_request()` 返回的 `SelectorModelRequest.system_prompt` 是 selector LLM 的固定 provider-level system prompt。模板中的 `{max_selector_suggested_files}` 必须在请求发送前替换为 `MAX_SELECTOR_SUGGESTED_FILES` 的十进制字符串：
 
 ```text
+You are MapCode's Branch-B file selector.
+
+Your only job is to understand the user's request and select the most semantically relevant existing source files from the provided Broad Repo Map and Selector Candidate Catalog.
+
+You are not the main coding agent.
+Do not propose code changes.
+Do not propose patches.
+Do not propose test edits.
+Do not write implementation plans.
+Do not call or suggest tools.
+Do not infer that any selected file has already been read.
+Do not treat repo map snippets as complete file content.
+
 You must respond ONLY with a JSON object in this exact format:
 {
   "suggested_files": ["relative/path/to/file.py"],
@@ -297,6 +310,8 @@ Rules:
 - Use repo-relative paths exactly as shown
 - Do not suggest new files
 - Return an empty list if no files are clearly relevant
+- Prefer implementation/source files over test files for normal analysis, bug fixing, and feature requests
+- Include test files only when the user explicitly asks about tests, test failures, pytest behavior, regression coverage, or when the test file is clearly necessary to understand the requested behavior
 - If the user mentions a directory-like path such as `pico/` or `src/`, prefer relevant files under that directory; this is not a hard filter
 - Return at most {max_selector_suggested_files} files
 ```
@@ -2262,40 +2277,41 @@ v1 完成必须同时满足：
 12. Repo map 只作为导航上下文，不改变 prior-read/edit safety。
 13. Pico 后续必须通过 `read_file` 后再编辑。
 14. `map_selector_requested`、`map_focus_confirmed`、`map_context_failed` 语义正确。
-15. 所有 run 级 map trace 经 `runtime.emit_trace()`。
-16. artifact 路径完全符合统一约定。
-17. `repo-map-001.txt` 表示首次主模型请求实际使用 prompt 中注入的 repo map section 内容。
-18. `map-evidence-001.json` 可回答为什么选择文件、使用什么分数和是否发生裁剪。
-19. Branch B broad 状态在 selector LLM 前展示。
-20. final focused/fallback 状态在主 LLM 前展示。
-21. child runtime 默认禁用 MapEngine。
-22. 不存在 `import aider.*`。
-23. Pico 原有测试在 MapEngine 禁用时保持通过。
-24. 存在 MapContext 时，主模型收到完整 repo map 导航安全契约。
-25. broad fallback 显示统一 notice，且不错误声称 selector 没有识别出文件。
-26. 导航安全契约不进入 Pico 全局 prefix；MapContext 不存在时不注入。
-27. repo map body 不参与原有 section reduction，但完整 repo map section 预留必须计入最终 `ModelRequestBudget`。
-28. MapEngine v1 只索引 Git tracked 或 staged、当前存在且未命中 denylist 的 Python 文件。
-29. 非代码文件、untracked Python 文件不进入 SymbolIndex、PageRank 或 repo map。
-30. 非 Git workspace 或 Git 文件枚举失败时不回退为文件系统递归扫描，Pico 原执行链继续。
-31. Branch B 只支持“接受全部建议 / 使用 broad map”，不支持部分接受或调整文件。
-32. `map_focus_confirmed` 只在用户接受全部有效建议且 confirmed files 非空时发送。
-33. 每个 prompt build 调用点显式提供 purpose；evaluation 和 step-limit summary 不注入 repo map。
-34. ContextManager 返回 build-local repo map render，不保存 `last_map_section_render`。
-35. 辅助 prompt build 不覆盖首次主模型注入 evidence；后续主模型 build 只在 trace 中记录 render 摘要。
-36. symbol-only Branch A 返回 `MapResult.mode="focused"`，但成功时 `RankingEvidence.algorithm="pagerank"`。
-37. `focus_fnames` 与 `personalization_files` 分别记录调用方聚焦输入和实际 PPR seed，且后者始终是前者的有序子集。
-38. `GraphRanker -> ContextRenderer` 使用现有 `DefinitionRecord` 和文件级排序结果完成渲染，definition group rank 仅作为 GraphRanker 内部排序依据，不新增 definition rank DTO。
-39. `prepare_specific()` 和 `prepare_fuzzy()` 返回 prepared `MapContextResult`；只有 `finalize_prompt_context()` 返回 finalized `MapContextResult`。
-40. `TaskState.attempts`、`main_model_calls` 和 `selector_model_calls` 按第 11.3 节分别统计，不互相替代。
-41. symbol-only Branch A 中精确命中的 DefinitionRecord 即使没有引用边，也固定进入 focused map 候选前缀。
-42. Branch B selector 使用固定 system prompt、动态 user prompt 和 `visible_paths`；只接受 broad map 或 `rendered_text` 中实际展示的路径，`candidate_paths` 只证明 catalog 来源属于当前 SymbolIndex snapshot。
-43. selector 请求超预算时不实际调用 selector，直接形成 `selector_request_over_budget` broad fallback。
-44. 预留 repo map 后若 base prompt 仍无法容纳，Engine 必须清除 `current_map_context` 并重建无 repo map prompt。
-45. 无 repo map prompt 仍超出 `ModelRequestBudget` 时，provider 不得被调用。
-46. Branch A focused、Branch B confirmed focused 和 Branch B broad fallback 使用同一份主模型 repo_map 导航契约模板。
-47. 主模型导航契约使用 `focus_files_display` 和 `active_repo_map_text`，且两者分别只派生自 `active_result.focus_fnames` 和 `active_result.repo_map_text`。
-48. 所有正常 broad fallback 复用 `original_user_message` 与已生成 broad map，不重新调用 selector、不重新询问用户、不要求用户重新输入 prompt。
+15. selector模型能正确接收system prompt，prompt中能够将模型自己定位认知为不能修改不能测试专注文件检索。
+16. 所有 run 级 map trace 经 `runtime.emit_trace()`。
+17. artifact 路径完全符合统一约定。
+18. `repo-map-001.txt` 表示首次主模型请求实际使用 prompt 中注入的 repo map section 内容。
+19. `map-evidence-001.json` 可回答为什么选择文件、使用什么分数和是否发生裁剪。
+20. Branch B broad 状态在 selector LLM 前展示。
+21. final focused/fallback 状态在主 LLM 前展示。
+22. child runtime 默认禁用 MapEngine。
+23. 不存在 `import aider.*`。
+24. Pico 原有测试在 MapEngine 禁用时保持通过。
+25. 存在 MapContext 时，主模型收到完整 repo map 导航安全契约。
+26. broad fallback 显示统一 notice，且不错误声称 selector 没有识别出文件。
+27. 导航安全契约不进入 Pico 全局 prefix；MapContext 不存在时不注入。
+28. repo map body 不参与原有 section reduction，但完整 repo map section 预留必须计入最终 `ModelRequestBudget`。
+29. MapEngine v1 只索引 Git tracked 或 staged、当前存在且未命中 denylist 的 Python 文件。
+30. 非代码文件、untracked Python 文件不进入 SymbolIndex、PageRank 或 repo map。
+31. 非 Git workspace 或 Git 文件枚举失败时不回退为文件系统递归扫描，Pico 原执行链继续。
+32. Branch B 只支持“接受全部建议 / 使用 broad map”，不支持部分接受或调整文件。
+33. `map_focus_confirmed` 只在用户接受全部有效建议且 confirmed files 非空时发送。
+34. 每个 prompt build 调用点显式提供 purpose；evaluation 和 step-limit summary 不注入 repo map。
+35. ContextManager 返回 build-local repo map render，不保存 `last_map_section_render`。
+36. 辅助 prompt build 不覆盖首次主模型注入 evidence；后续主模型 build 只在 trace 中记录 render 摘要。
+37. symbol-only Branch A 返回 `MapResult.mode="focused"`，但成功时 `RankingEvidence.algorithm="pagerank"`。
+38. `focus_fnames` 与 `personalization_files` 分别记录调用方聚焦输入和实际 PPR seed，且后者始终是前者的有序子集。
+39. `GraphRanker -> ContextRenderer` 使用现有 `DefinitionRecord` 和文件级排序结果完成渲染，definition group rank 仅作为 GraphRanker 内部排序依据，不新增 definition rank DTO。
+40. `prepare_specific()` 和 `prepare_fuzzy()` 返回 prepared `MapContextResult`；只有 `finalize_prompt_context()` 返回 finalized `MapContextResult`。
+41. `TaskState.attempts`、`main_model_calls` 和 `selector_model_calls` 按第 11.3 节分别统计，不互相替代。
+42. symbol-only Branch A 中精确命中的 DefinitionRecord 即使没有引用边，也固定进入 focused map 候选前缀。
+43. Branch B selector 使用固定 system prompt、动态 user prompt 和 `visible_paths`；只接受 broad map 或 `rendered_text` 中实际展示的路径，`candidate_paths` 只证明 catalog 来源属于当前 SymbolIndex snapshot。
+44. selector 请求超预算时不实际调用 selector，直接形成 `selector_request_over_budget` broad fallback。
+45. 预留 repo map 后若 base prompt 仍无法容纳，Engine 必须清除 `current_map_context` 并重建无 repo map prompt。
+46. 无 repo map prompt 仍超出 `ModelRequestBudget` 时，provider 不得被调用。
+47. Branch A focused、Branch B confirmed focused 和 Branch B broad fallback 使用同一份主模型 repo_map 导航契约模板。
+48. 主模型导航契约使用 `focus_files_display` 和 `active_repo_map_text`，且两者分别只派生自 `active_result.focus_fnames` 和 `active_result.repo_map_text`。
+49. 所有正常 broad fallback 复用 `original_user_message` 与已生成 broad map，不重新调用 selector、不重新询问用户、不要求用户重新输入 prompt。
 
 ---
 
