@@ -22,3 +22,7 @@
 !pico_origin/**
 
 !.gitattributes
+
+# Keep project docs
+!doc/
+!doc/**
