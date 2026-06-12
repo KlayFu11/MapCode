@@ -7,6 +7,8 @@
 # Keep root docs / agent rules
 !README.md
 !AGENT.md
+!FuncFlow_v1_3.md
+!SPEC_v1_3.md
 
 
 # Keep selected source directories
