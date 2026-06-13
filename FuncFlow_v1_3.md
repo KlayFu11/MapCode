@@ -122,17 +122,29 @@ Pico 主模型/tool loop：
 
 包含：
 
-- prompt 命中的文件。
-- prompt 中可用于排名的 identifier。
-- index 中实际存在的 symbol hits。
+- `mentioned_files`：prompt 精确命中的 indexed Python 文件。
+- `mentioned_idents`：对 user message 使用 `re.split(r"\W+", text)` 提取并按首次出现顺序稳定去重的 identifier-like tokens。
+- `effective_symbol_hits`：`mentioned_idents` 中实际命中 index definition 的 symbol。
+- `path_ident_hits`：`mentioned_idents` 中实际命中 indexed Python 文件 path terms 的原始 ident。
+- `path_ident_hit_files`：每个原始 path ident 命中的全部 indexed Python 文件只读映射。
 - Branch A / Branch B 判断结果。
 
 `PromptAnalysis` 不保存 focus 文件或 index snapshot id：
 
 - Branch A 的 focus 只来自 `mentioned_files`。
 - Branch A 仅命中 symbol 时，focus 为空，完整 `mentioned_idents` 仍用于 ident boost。
+- Branch A 仅命中 path ident 时，focus 为空，`path_ident_hit_files` 用于形成 path personalization。
 - Branch B 的 focus 只来自用户接受后的 `SelectionDecision.confirmed_files`。
 - 最终实际 focus 只保存在 `MapResult.focus_fnames`。
+
+`path_ident_hit_files: Mapping[str, tuple[str, ...]]` 的 key 保留 prompt 原始大小写，顺序与 `path_ident_hits` 一致；value 保存全部匹配 indexed Python 文件并按 repo-relative path 排序。它是 PromptAnalyzer 匹配事实，不受文件图节点、PageRank、rendering 或 token budget 过滤。同一 normalized lowercase ident 的不同原始大小写可以分别保留为 key，但同一文件只获得一次 path personalization contribution。
+
+Branch 判断固定为：
+
+```text
+specific = mentioned_files 非空 OR effective_symbol_hits 非空 OR path_ident_hits 非空
+fuzzy    = mentioned_files 为空 AND effective_symbol_hits 为空 AND path_ident_hits 为空
+```
 
 ### 4.2 MapResult
 
@@ -174,16 +186,39 @@ MapResult.focus_fnames == MapResult.evidence.ranking.focus_fnames
 其中必须区分：
 
 - `focus_fnames`：调用方要求聚焦的文件。
-- `personalization_files`：`focus_fnames` 中实际存在于本次文件图节点、并用于 PPR personalization 的有序子集。
+- `ident_boost_inputs`：完整 `mentioned_idents`，用于按原始大小写精确匹配 def/ref 图中的 symbol identifier。
+- `focus_personalization_files`：`focus_fnames` 中实际存在于本次文件图节点的有序子集；只有这些文件获得 focus personalization contribution 和 `FOCUS_OUTBOUND_BOOST`。
+- `path_personalization_files`：`PromptAnalysis.path_ident_hit_files` values 中实际存在于本次文件图节点、并按 repo-relative path 排序的稳定有序并集；只获得 path personalization contribution。
+- `personalization_files`：`focus_personalization_files` 与 `path_personalization_files` 的稳定有序并集，是实际传给 PPR 的文件集合；先保留 focus 输入顺序，再追加尚未出现的 path files。
 - `algorithm`：实际执行的 `pagerank`、`personalized_pagerank` 或 `stable_path_fallback`。
 - `node_pagerank`：机器和 eval 使用的原始文件级 PageRank 分数。
 - `pagerank_norm`：人类展示使用的归一化分数。
 - `DefinitionRecord` 有序序列：`GraphRanker` 按 Aider-style `(definer_file, identifier)` definition group rank 排序后交给 `ContextRenderer`；无 definition 文件使用文件级排序结果，不为单个 definition 建立分数字段。
 - `definition_rank_sum`：文件内所有不同 identifier 的 definition group rank 之和，同一 identifier 的多个 DefinitionRecord 不重复累计。
 - `prompt_symbol_hits`：prompt 命中且定义在该文件中的符号。
+- `prompt_path_ident_hits`：从 `path_ident_hit_files` 反向投影得到、实际命中该文件 path terms 的原始 path ident；命中文件时 reason codes 包含 `path_ident_match`。
 - `rendered_symbols`：最终进入候选 map body 的符号。
-- `top_rank_contributors`：对文件排名贡献最大的引用边。
+- `top_rank_contributors`：对文件排名贡献最大的引用边；每项 `RankContributorEvidence` 包含相对于 `sqrt(reference_count)` 的最终 `weight_multiplier` 与稳定 `weight_reason_codes`，其中 multiplier 包含可能的 `FOCUS_OUTBOUND_BOOST`。
 - `top_ranked_files`：预算渲染前排名最高的最多 `TOP_RANKED_FILES_LIMIT=5` 个不同文件。
+
+symbol 边权重在 PageRank 前组合计算：
+
+```text
+base_edge_weight = sqrt(reference_count)
+symbol_multiplier = 1.0
+prompt ident 精确命中时：symbol_multiplier *= IDENT_BOOST
+structured ident 且长度 >= STRUCTURED_IDENT_MIN_LENGTH 时：symbol_multiplier *= STRUCTURED_IDENT_BOOST
+private ident 时：symbol_multiplier *= PRIVATE_IDENT_PENALTY
+不同 defining files 数量 > COMMON_IDENT_DEFINER_THRESHOLD 时：symbol_multiplier *= COMMON_IDENT_PENALTY
+edge_weight = base_edge_weight * symbol_multiplier
+focus source file 的出站边再乘 FOCUS_OUTBOUND_BOOST
+```
+
+每个 multiplier 只在对应条件成立时加入，按条件组合相乘且不互斥。structured ident 指达到 `STRUCTURED_IDENT_MIN_LENGTH` 的 snake_case、kebab-case 或同时含大小写字母的 camelCase/PascalCase；common ident 按超过 `COMMON_IDENT_DEFINER_THRESHOLD` 个不同 defining files 判断。`RankContributorEvidence.weight_reason_codes` 按稳定顺序使用 `prompt_ident_boost`、`structured_ident_boost`、`private_ident_penalty`、`common_ident_penalty`、`focus_outbound_boost`；未应用任何 multiplier 时，`weight_multiplier=1.0` 且 reason codes 为空。具体常量值只以 `SPEC_v1_3.md` 的 `config.py` 设计为事实源。
+
+symbol matching 保持大小写敏感；只有 path ident matching 使用 normalized lowercase key。v1.3 不添加 Aider 的无引用 definition `0.1` 自环。
+
+`MapContextEvidence.analysis.path_ident_hit_files` 保存全局 path ident -> indexed files 匹配事实；文件级 `prompt_path_ident_hits` 只是该映射的反向投影。一个文件同时属于 focus/path personalization 时分别获得一次 contribution，但同一类 contribution 不重复累计。
 
 v1 不定义含义不明确的 `selection_score`。
 
@@ -410,10 +445,13 @@ Branch A 和 Branch B 在分支判断前共用以下流程：
                  │    └─ 调 runtime.emit_trace(map_index_status)
                  │
                  ├─ Coordinator 调 MapEngine 分析 user_message
-                 │    ├─ 提取路径 / basename / stem 命中
-                 │    ├─ 提取 mentioned identifiers
-                 │    ├─ 与 index definitions 对齐
-                 │    └─ MapEngine 返回 PromptAnalysis
+                 │    ├─ 规范化并验证准确路径、唯一 basename 和唯一 stem 文件命中
+                 │    ├─ 使用 re.split(r"\W+", text) 提取完整 mentioned identifiers
+                 │    ├─ 与 index definitions 对齐得到 effective symbol hits
+                 │    ├─ 使用 normalized lowercase path terms 做大小写不敏感 path ident matching
+                 │    └─ 形成 path_ident_hits 与全量 path_ident_hit_files
+                 │
+                 ├─ MapEngine 返回 PromptAnalysis
                  │
                  ├─ Coordinator 根据返回的 PromptAnalysis
                  │    └─ 调 runtime.emit_trace(map_prompt_analyzed)
@@ -428,6 +466,8 @@ PromptAnalysis
   ├─ mentioned_files
   ├─ mentioned_idents
   ├─ effective_symbol_hits
+  ├─ path_ident_hits
+  ├─ path_ident_hit_files
   └─ branch = specific | fuzzy
 ```
 
@@ -443,6 +483,8 @@ Engine 只读取 `PromptAnalysis.branch` 决定下一条控制路径，不参与
 mentioned_files 非空
 OR
 effective_symbol_hits 非空
+OR
+path_ident_hits 非空
 ```
 
 完整流程：
@@ -455,9 +497,12 @@ Engine 读取 PromptAnalysis(branch=specific)
        └─ Coordinator 调 MapEngine 生成 focused map
             │
             ├─ 将 mentioned_files 保存为 focus_fnames
-            ├─ 从 focus_fnames 中过滤出实际存在于文件图节点的 personalization_files
-            ├─ personalization_files 用于 focus outbound boost 和 PPR personalization
-            ├─ 将完整 mentioned_idents 用作 ident edge boost 输入
+            ├─ 从 focus_fnames 中过滤出实际文件图节点，形成 focus_personalization_files
+            ├─ 从 path_ident_hit_files 合并并过滤实际文件图节点，形成 path_personalization_files
+            ├─ 合并两类文件，形成实际传给 PPR 的 personalization_files
+            ├─ 只有 focus_personalization_files 获得 focus outbound boost
+            ├─ 将完整 mentioned_idents 用作大小写敏感的 prompt ident edge boost 输入
+            ├─ 在 PageRank 前组合应用 structured/private/common Aider-style symbol multiplier
             ├─ effective_symbol_hits 用于 Branch 判断、trace、evidence、eval，并将精确命中的 DefinitionRecord 固定加入 focused map 候选前缀
             ├─ personalization_files 非空时执行 Personalized PageRank
             ├─ personalization_files 为空时执行标准 PageRank
@@ -498,6 +543,8 @@ mentioned_files 为空
 AND
 effective_symbol_hits 为空
 AND
+path_ident_hits 为空
+AND
 Engine._can_confirm_focus() = True
 ```
 
@@ -511,7 +558,10 @@ Engine 读取 PromptAnalysis(branch=fuzzy)
        └─ Coordinator 调 MapEngine 生成 broad map
             │
             ├─ 对当前 index snapshot 构建全仓引用图
-            ├─ focus_fnames=()，personalization_files=()
+            ├─ focus_fnames=()
+            ├─ focus_personalization_files=()
+            ├─ path_personalization_files=()
+            ├─ personalization_files=()
             ├─ 执行标准 PageRank，不使用 personalization 或 focus outbound boost
             ├─ mode=broad；PageRank 成功时 algorithm=pagerank，失败或空图时 algorithm=stable_path_fallback
             ├─ 产生 broad ranking facts
@@ -598,8 +648,10 @@ Engine 向 Coordinator 发出 prepare_fuzzy 命令
        ├─ [confirmed files 非空]
        │    └─ Coordinator 调 MapEngine 生成 focused map
        │         ├─ confirmed files 保存为 focus_fnames
-       │         ├─ 从 focus_fnames 中过滤出实际存在于文件图节点的 personalization_files
-       │         ├─ personalization_files 用于 focus outbound boost 和 PPR personalization
+       │         ├─ 从 focus_fnames 中过滤出 focus_personalization_files
+       │         ├─ 当前 fuzzy PromptAnalysis 的 path_ident_hit_files 为空，因此 path_personalization_files=()
+       │         ├─ personalization_files = focus_personalization_files
+       │         ├─ 只有 focus_personalization_files 获得 focus outbound boost
        │         ├─ 复用 broad map 已使用的 SymbolIndex snapshot，不重新枚举或刷新索引
        │         ├─ 使用固定 focused token budget = 4,096
        │         ├─ personalization_files 非空时执行 PPR，否则执行标准 PageRank
@@ -930,16 +982,23 @@ cache hit 不代表完全不做工作：
 
 ```text
 用户请求
-  -> 提取文件路径 / basename / stem
-  -> 提取完整 mentioned_idents
+  -> 规范化并验证 repo-relative、./ repo-relative 或 repo-root 内 absolute file path
+  -> 验证唯一 basename / stem 文件命中
+  -> 使用 re.split(r"\W+", text) 提取完整 mentioned_idents
   -> 与 index defs 对齐得到 effective_symbol_hits
+  -> 使用 normalized lowercase path terms 匹配 path_ident_hits
+  -> 记录每个原始 path ident 的全量 path_ident_hit_files
   -> 生成 PromptAnalysis
   -> emit map_prompt_analyzed
 ```
 
 随后由 Engine 根据 PromptAnalysis 选择 Branch。
 
-`mentioned_idents` 是 ranking 的 ident boost 输入；`effective_symbol_hits` 只用于 Branch 判断、trace、evidence 和 eval。
+准确路径只有规范化后精确存在于当前 `SymbolIndex.file_records` 时才进入 `mentioned_files`。目录、路径前缀和 repo root 外路径不得进入。basename 按原始大小写唯一命中；stem 使用大小写不敏感、长度至少为 5 且唯一候选的保守匹配。
+
+目录样式片段不会形成 `mentioned_dirs` 或 `mentioned_files`。例如 `pico/` 被切出原始 ident `pico`，使用 lowercase 与 indexed file path components、basename 和 stem 比较；命中结果进入 `path_ident_hits` 与 `path_ident_hit_files`。
+
+`mentioned_idents` 是 ranking 的完整 `ident_boost_inputs`；symbol matching 与 symbol edge boost 保持大小写敏感。`path_ident_hits` 本身不额外触发 symbol edge boost，但同一个原始 ident 如果也精确命中 def/ref 图 symbol，仍通过完整 `mentioned_idents` 获得对应 boost。`effective_symbol_hits` 只用于 Branch 判断、trace、evidence、eval 和精确 DefinitionRecord 候选前缀。
 
 ---
 
@@ -951,6 +1010,8 @@ cache hit 不代表完全不做工作：
 mentioned_files 非空
 OR
 effective_symbol_hits 非空
+OR
+path_ident_hits 非空
 ```
 
 典型请求：
@@ -958,6 +1019,7 @@ effective_symbol_hits 非空
 - “修复 `auth.py` 中的 token 校验。”
 - “分析 `JWTAuth` 的实现。”
 - “修改 `get_repo_map`。”
+- “请你分析一下 `pico/` 目录下的文件都起到了什么作用？”
 
 ### 8.2 数据流
 
@@ -973,13 +1035,36 @@ PromptAnalysis(branch=specific)
 
 ### 8.3 排名语义
 
-- 文件命中进入 `focus_fnames`；其中实际存在于文件图节点的文件进入 `personalization_files`，成为 PPR seed。
-- 完整 `mentioned_idents` 可增强相关 identifier 引用边。
+- 文件命中进入 `focus_fnames`；其中实际存在于文件图节点的文件进入 `focus_personalization_files`。
+- `path_ident_hit_files` 中实际存在于文件图节点的稳定有序并集进入 `path_personalization_files`。
+- `personalization_files` 是 focus/path personalization files 的稳定有序并集；同一文件每类 contribution 最多一次。
+- 完整 `mentioned_idents` 按原始大小写精确匹配 symbol，并对对应引用边应用 prompt ident boost。
+- 每条 symbol 引用边在 PageRank 前组合应用 Aider-style prompt、structured、private 和 common identifier multiplier；只有 `focus_personalization_files` 的出站边获得 `FOCUS_OUTBOUND_BOOST`。
 - `effective_symbol_hits` 不改变 PageRank/PPR 分数，但对应的精确命中 DefinitionRecord 固定进入 focused map 候选前缀。
-- `personalization_files` 的出站引用可增强相关定义文件。
+- path personalization files 不成为 focus，不获得 `FOCUS_OUTBOUND_BOOST`。
 - `GraphRanker` 将按 definition group rank 排序后的 `tuple[DefinitionRecord, ...]` 和文件级排序结果交给 `ContextRenderer`。
 - symbol-only Branch A 的 `focus_fnames=()`、`personalization_files=()`，`MapResult.mode="focused"`，成功时 `RankingEvidence.algorithm="pagerank"`。
+- path-ident-only Branch A 的 `focus_fnames=()`；存在有效 `path_personalization_files` 时使用 Personalized PageRank，但不调用 selector。
+- path-ident-only Branch A 若匹配文件均未形成文件图节点，则 `personalization_files=()`，仍返回 focused `MapResult`，成功时执行标准 PageRank。
 - focus 文件仍保留在 repo map 中，不因 Aider chat-file 语义被排除。
+
+path-ident-only 简例：
+
+```text
+prompt = "请你分析一下 pico/目录下的文件都起到了什么作用？"
+mentioned_files = ()
+effective_symbol_hits = ()
+path_ident_hits = ("pico",)
+path_ident_hit_files = {"pico": ("pico/core/runtime.py", "pico/core/session.py", "pico/tools/standalone.py")}
+focus_fnames = ()
+focus_personalization_files = ()
+path_personalization_files = ("pico/core/runtime.py", "pico/core/session.py")  # 实际文件图节点
+personalization_files = ("pico/core/runtime.py", "pico/core/session.py")
+branch = specific
+algorithm = personalized_pagerank
+```
+
+`pico/tools/standalone.py` 仍保留在全局匹配事实中，但由于未形成文件图节点，不进入 `path_personalization_files`。
 
 ### 8.4 预算语义
 
@@ -1005,13 +1090,15 @@ Branch A：
 mentioned_files 为空
 AND
 effective_symbol_hits 为空
+AND
+path_ident_hits 为空
 ```
 
 典型请求：
 
-- “修复登录问题。”
-- “优化这个项目的缓存。”
-- “找出可能导致请求失败的代码。”
+- “分析一下这个仓库。”
+- “看看这个项目是做什么的。”
+- 其他没有有效文件、symbol 或 path ident 命中的请求。
 
 ### 9.2 阶段一：生成 broad map
 
@@ -1022,6 +1109,8 @@ PromptAnalysis(branch=fuzzy)
   -> MapEngine 执行全仓标准 PageRank
   -> broad MapResult.mode = broad
   -> RankingEvidence.focus_fnames = ()
+  -> RankingEvidence.focus_personalization_files = ()
+  -> RankingEvidence.path_personalization_files = ()
   -> RankingEvidence.personalization_files = ()
   -> PageRank 成功时 RankingEvidence.algorithm = pagerank；失败或空图时为 stable_path_fallback
   -> MapEngine 使用 broad token budget = 8,192 渲染导航图
@@ -1071,6 +1160,8 @@ Coordinator 调 MapEngine.build_selector_catalog()
 
 `map_focus_confirmed` 只在用户选择“接受全部建议”且 confirmed files 非空后发送。v1 不支持部分接受、增删或调整 selector 建议文件。
 
+能够形成有效 `path_ident_hits` 的目录样式输入已经在 PromptAnalyzer 阶段进入 Branch A，不由 Branch B selector 承担目录语义选择。selector 只处理文件、symbol 和 path ident 均无有效命中的 fuzzy 请求。
+
 ### 9.5 阶段二：形成执行用 map
 
 用户确认文件非空：
@@ -1080,7 +1171,9 @@ SelectionDecision(confirmed files)
   -> Engine 调 Coordinator.prepare_fuzzy()
   -> Coordinator 调 MapEngine.generate_focused()
   -> confirmed files 成为 focus_fnames
-  -> 实际存在于文件图节点的 focus_fnames 成为 personalization_files
+  -> 实际存在于文件图节点的 focus_fnames 成为 focus_personalization_files
+  -> fuzzy PromptAnalysis 没有 path ident hits，因此 path_personalization_files = ()
+  -> personalization_files = focus_personalization_files
   -> 复用 broad map 的 SymbolIndex snapshot
   -> 使用 focused token budget = 4,096
   -> MapResult.mode 保持 focused，RankingEvidence.algorithm 记录实际算法
@@ -1268,6 +1361,7 @@ artifact 和 run 摘要完整落盘后，Coordinator 返回 finalized `MapContex
 
 - 是 `MapEvidenceArtifact` 的序列化结果，保存完整检索事实和控制决策。
 - 包含 broad/focused 结构化结果、selector/确认/fallback、首次主模型最终注入信息和 repo map artifact 引用。
+- 通过 `analysis.path_ident_hit_files` 保存全局 path ident 命中文件事实，并通过 ranking/file evidence 保存 graph-node 过滤、personalization 和文件级反向投影。
 - 不保存完整 repo map 文本，也不保存自身 artifact path。
 
 同一 run 内后续主模型 build 不重复写完整 repo map artifact，只在对应 `prompt_built` trace 中记录 render hash、字符数和 omission 状态。
@@ -1316,6 +1410,8 @@ artifact 和 run 摘要完整落盘后，Coordinator 返回 finalized `MapContex
 - Branch。
 - broad / focused / fallback 模式。
 - focus files。
+- focus/path personalization files。
+- prompt path ident hits 与命中 indexed file 数量。
 - top ranked files 与实际 rendered / omitted files。
 - prompt symbol hits 和已有 evidence 支持的 top rank contributors。
 - used tokens / budget tokens。
@@ -1389,6 +1485,8 @@ repo map 中出现文件不代表已读取。
 ---
 
 ## 十四、Trace 事件顺序
+
+`map_prompt_analyzed` 必须记录 `mentioned_files`、`mentioned_idents`、`effective_symbol_hits`、`path_ident_hits`、`path_ident_hit_files` 和最终 branch。`map_context_ranked` 必须记录 focus/path personalization files、最终 personalization files，以及 top contributors 的 `weight_multiplier` / `weight_reason_codes`。这样 trace 可以解释 Branch 判断、path ident 全量命中范围和最终 ranking 输入。
 
 ### 14.1 Branch A 正常顺序
 
@@ -1649,11 +1747,12 @@ Pico 完成任务
 
 | 项目 | Branch A | Branch B |
 |---|---|---|
-| 触发 | prompt 命中文件或 symbol | prompt 无明确命中 |
+| 触发 | prompt 有有效文件、symbol 或 path ident 命中 | prompt 没有有效文件、symbol 或 path ident 命中 |
 | 第一张 map | focused | broad |
 | selector LLM | 不调用 | 交互模式调用 |
 | 用户确认 | 不需要 | 交互模式需要 |
 | 最终 active map | focused | confirmed focused 或 broad fallback |
+| personalization 来源 | 明确文件 focus 和/或 path ident 命中的实际图节点 | broad 阶段为空；confirmed focused 仅来自确认文件 |
 | repo map token budget | focused 固定 4,096 | broad 8,192；confirmed focused 改为 4,096 |
 | 主模型前输出 | final focused 摘要 | final focused/fallback 摘要 |
 
@@ -1672,7 +1771,7 @@ Pico 完成任务
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ Coordinator -> MapEngine：lazy index + PromptAnalysis       │
-│ MapEngine 返回确定性分析事实                                │
+│ MapEngine 返回 file/symbol/path ident 确定性分析事实        │
 └──────────────────────────┬──────────────────────────────────┘
                            ↓
                   ┌────────┴────────┐
@@ -1762,3 +1861,7 @@ Pico 完成任务
 17. Branch A、Branch B focused 和 Branch B broad fallback 使用同一主模型导航契约模板。
 18. selector 无有效建议或用户拒绝建议时，系统不重跑 selector、不重新询问用户，也不要求重新输入 prompt。
 19. 主模型不会使用无法由完整 repo map artifact、evidence artifact 和 run 摘要共同证明的 repo map。
+20. `pico/` 等目录样式片段不形成目录 scope 或 `mentioned_files`，但会通过 path ident matching 进入 Branch A 并影响 ranking。
+21. trace/evidence 可从 `path_ident_hit_files` 复盘每个原始 path ident 命中的全部 indexed files，并解释其到 `path_personalization_files` 的图节点过滤。
+22. path ident matching 大小写不敏感，evidence 保留原始 ident；symbol matching 与 symbol edge boost 保持大小写敏感。
+23. top rank contributor evidence 能解释 Aider-style prompt/structured/private/common symbol multiplier 与 focus outbound boost。
