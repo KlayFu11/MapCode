@@ -1,11 +1,11 @@
 # MapCode v1 总体进度
 
-> 本文件是 MapCode 产品 v1 的唯一任务进度来源；当前任务设计依据为 `SPEC_v1_3.md`、`PRD_v1_1.md`、`FuncFlow_v1_3.md`。
+> 本文件是 MapCode 产品 v1 的唯一任务进度来源；当前任务设计依据为 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md`。
 > 只有任务实现完成、验证命令通过、用户审查通过并完成对应 commit 后，才能勾选。
 
 ## 当前阶段
 
-- `vibe-prac` 阶段三：已依据 `SPEC_v1_3.md`、`PRD_v1_1.md`、`FuncFlow_v1_3.md` 完成任务重新对齐，等待进入阶段四实现。
+- `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐，等待进入阶段四实现。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
 - 首个可执行任务：`V1-F0-01 校准根目录 Git baseline 与 .gitignore`
 
@@ -45,11 +45,11 @@
 
 ## 阶段 3：确定性 MapEngine
 
-- [ ] V1-F3-01 实现 PromptAnalyzer identifier 与 Branch 判断 (P0, 依赖 V1-F2-07)
-- [ ] V1-F3-02 实现文件路径唯一匹配与歧义过滤 (P0, 依赖 V1-F3-01)
+- [ ] V1-F3-01 实现 PromptAnalyzer identifier 与 symbol hit 提取 (P0, 依赖 V1-F2-07)
+- [ ] V1-F3-02 实现文件匹配、path ident 与 Branch 判断 (P0, 依赖 V1-F3-01)
 - [ ] V1-F3-03 构建文件级 def/ref 图和稳定 fallback (P0, 依赖 V1-F3-02)
-- [ ] V1-F3-04 实现 broad PageRank 和 ranking evidence (P0, 依赖 V1-F3-03)
-- [ ] V1-F3-05 实现 focused PPR、boost 和 contributors (P0, 依赖 V1-F3-04)
+- [ ] V1-F3-04 实现 broad PageRank、Aider-style multiplier 与 ranking evidence (P0, 依赖 V1-F3-03)
+- [ ] V1-F3-05 实现 focus/path personalization、PPR 与 outbound boost (P0, 依赖 V1-F3-04)
 - [ ] V1-F3-06 固定 effective_symbol_hits DefinitionRecord 候选前缀 (P0, 依赖 V1-F3-05)
 - [ ] V1-F3-07 使用 TreeContext 渲染结构摘要 (P0, 依赖 V1-F3-06)
 - [ ] V1-F3-08 实现固定 focused/broad token budget 与 truncation (P0, 依赖 V1-F3-07)
@@ -117,12 +117,12 @@
 ## 阶段 9：Retrieval Eval 与发布验收
 
 - [ ] V1-F9-01 建立固定 retrieval fixture 和 ground truth (P0, 依赖 V1-F8-07)
-- [ ] V1-F9-02 实现 rendered-file、first-read 与 map budget 指标 (P0, 依赖 V1-F9-01)
+- [ ] V1-F9-02 实现 effective-hit、rendered-file、first-read 与 map budget 指标 (P0, 依赖 V1-F9-01)
 - [ ] V1-F9-03 实现完整 selector request 与 catalog truncation 指标 (P0, 依赖 V1-F9-02)
 - [ ] V1-F9-04 实现 fallback、reduction、omission 与超预算指标 (P0, 依赖 V1-F9-03)
 - [ ] V1-F9-05 接入 Pico evaluator (P0, 依赖 V1-F9-04)
 - [ ] V1-F9-06 运行完整离线回归和架构边界检查 (P0, 依赖 V1-F9-05)
-- [ ] V1-F9-07 使用真实 provider 演示 Branch A (P0, 依赖 V1-F9-06)
+- [ ] V1-F9-07 使用真实 provider 演示 Branch A 与 path-ident-only (P0, 依赖 V1-F9-06)
 - [ ] V1-F9-08 使用真实 provider 演示 Branch B 和预算降级 (P0, 依赖 V1-F9-07)
 - [ ] V1-F9-09 更新 README、配置、演示步骤和项目总进度 (P0, 依赖 V1-F9-08)
 
@@ -134,7 +134,7 @@
 
 ## 最近完成
 
-- 日期：2026-06-12
-- 完成任务：依据最新 `SPEC_v1_3.md`、`FuncFlow_v1_3.md` 对齐项目施工计划
+- 日期：2026-06-15
+- 完成任务：依据最新 `SPEC_v1_4.md`、`FuncFlow_v1_4.md` 对齐 path_ident 项目施工计划
 - 验证命令：计划一致性、依赖、字段、覆盖、旧语义与只读边界检查
-- 结果：三处均为 87 个唯一任务且差异为 0；阶段分布为 `8/10/7/11/10/9/9/7/7/9`；字段、依赖、旧语义、核心覆盖和允许修改路径违规均为 0。
+- 结果：三处均为 87 个唯一任务且差异为 0；阶段分布为 `8/10/7/11/10/9/9/7/7/9`；字段、依赖、旧语义、path-ident 核心覆盖和允许修改路径违规均为 0。

@@ -2,11 +2,11 @@
 
 ## 模块目标
 
-建立 MapCode v1 retrieval/context-selection 评测，验证固定 token budget、selector catalog、请求预算门禁、降级证据和真实 provider 演示，并完成发布文档。
+建立 MapCode v1 retrieval/context-selection 评测，验证文件/symbol/path-ident 有效命中、focus/path personalization、multiplier audit、固定 token budget、selector catalog、请求预算门禁、降级证据和真实 provider 演示，并完成发布文档。
 
 ## 相关设计
 
-- 当前迁移前来源：`PRD_v1_1.md` 评测方案、`SPEC_v1_3.md` 17.6、18、19。
+- 当前迁移前来源：`PRD_v1_2.md` 评测方案、`SPEC_v1_4.md` 17.6、18、19。
 - 迁移后来源：`doc/PRD.md`、`doc/SPEC.md`。
 
 ## 模块依赖
@@ -29,28 +29,28 @@
 - **输出**：固定 Git Python fixture、请求与 ground_truth_files
 - **允许修改路径**：`pico/tests/fixtures/map_engine_eval/`、retrieval eval tests/data
 - **禁止修改边界**：不得让 ground truth 依赖模型主观判断
-- **步骤**：建立可人工核对的 specific/fuzzy/symbol-only/catalog/over-budget/failure cases；增加“分析 `pico/` 文件夹内容”目录类 fuzzy、source/test 偏好和隐藏 candidate 拒绝场景。
+- **步骤**：建立可人工核对的 file-specific、symbol-only、path-ident-only、三无 fuzzy、catalog、over-budget、failure cases；将“分析 `pico/` 文件夹内容”固定为 path-ident-only Branch A，覆盖原始 ident 大小写保留、全量匹配到图节点过滤；Branch B fixture 单独覆盖 source/test 偏好和隐藏 candidate 拒绝。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_engine_retrieval_eval.py -q
   ```
-- **完成标准**：fixture 小、稳定，覆盖 `SPEC_v1_3.md` 定义的关键数据流。
+- **完成标准**：fixture 小、稳定，覆盖 `SPEC_v1_4.md` 定义的关键数据流，并能明确证明 path-ident-only 与真正三无 fuzzy 的分支差异。
 - **回退条件**：ground truth 含糊、fixture 不可重复或依赖真实模型。
 
-### V1-F9-02：实现 rendered-file、first-read 与 map budget 指标
+### V1-F9-02：实现 effective-hit、rendered-file、first-read 与 map budget 指标
 
 - **优先级**：P0
 - **依赖**：V1-F9-01
 - **输入**：当前最新 SPEC/PRD/FuncFlow、结构化 map evidence/trace
-- **输出**：rendered-file hit、first-read hit、broad/focused tokens 和 chars 指标与 tests
+- **输出**：文件/symbol/path-ident effective hit、path-ident Branch、rendered-file hit、first-read hit、broad/focused tokens/chars、personalization 与 multiplier audit 指标和 tests
 - **允许修改路径**：retrieval metrics 模块与 tests
 - **禁止修改边界**：不得从终端文本解析机器指标
-- **步骤**：从 evidence/trace 读取 rendered files、首个 read_file、RenderingEvidence target/estimated tokens 和 used chars。
+- **步骤**：从 evidence/trace 读取文件/symbol/path-ident 有效命中率、path-ident-only 是否进入 Branch A、原始 ident 大小写、`path_ident_hit_files` 到 `path_personalization_files` 的图节点过滤、path-ident ground truth 是否进入 personalization/rendered files、focus/path personalization 隔离、top contributor multiplier/reason codes、rendered files、首个 read_file、RenderingEvidence target/estimated tokens 和 used chars。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_engine_retrieval_eval.py -q
   ```
-- **完成标准**：指标来源明确、缺失数据有稳定结果，能区分 broad/focused 固定预算。
+- **完成标准**：指标来源明确、缺失数据有稳定结果；能区分三类有效命中、path-ident-only Branch A、focus/path personalization、Aider-style multiplier audit 和 broad/focused 固定预算。
 - **回退条件**：只记录字符数、从文本猜测 budget 或指标语义不稳定。
 
 ### V1-F9-03：实现完整 selector request 与 catalog truncation 指标
@@ -82,7 +82,7 @@
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_engine_retrieval_eval.py -q
   ```
-- **完成标准**：`SPEC_v1_3.md` 定义的最小 retrieval 与请求预算指标全部可输出。
+- **完成标准**：`SPEC_v1_4.md` 定义的最小 retrieval 与请求预算指标全部可输出。
 - **回退条件**：指标语义无法对应稳定事实源。
 
 ### V1-F9-05：接入 Pico evaluator
@@ -119,7 +119,7 @@
 - **完成标准**：完整离线门禁通过，无未解释回归或门禁调整。
 - **回退条件**：任何失败未定位根因，或存在为门禁制造的无意义模块。
 
-### V1-F9-07：使用真实 provider 演示 Branch A
+### V1-F9-07：使用真实 provider 演示 Branch A 与 path-ident-only
 
 - **优先级**：P0
 - **依赖**：V1-F9-06
@@ -127,12 +127,12 @@
 - **输出**：真实 specific 请求演示记录与 artifacts
 - **允许修改路径**：运行 artifacts、当前任务记录、必要用户文档
 - **禁止修改边界**：不得记录密钥或用真实模型结果替代离线断言
-- **步骤**：启用 MapEngine；发出明确文件/符号请求；核验精确 DefinitionRecord 前缀、4,096-token focused map、首个 read_file、prompt、artifacts、trace/report 和最终请求门禁。
+- **步骤**：启用 MapEngine；发出明确文件、symbol-only 和“分析 `pico/` 文件夹内容”path-ident-only 请求；核验 path-ident-only 不调用 selector、`focus_fnames=()`、path-personalized focused map、无 path outbound boost、精确 DefinitionRecord 前缀、4,096-token focused map、首个 read_file、prompt、artifacts、trace/report 和最终请求门禁。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pico --cwd .\pico\tests\fixtures\map_engine_eval --map-engine "fix token validation in JWTAuth"
   ```
-- **完成标准**：真实模型完成 Branch A，证据链可复盘，敏感信息未落盘。
+- **完成标准**：真实模型完成文件/symbol/path-ident 三类 Branch A，path-ident 证据链可复盘，敏感信息未落盘。
 - **回退条件**：模型/网络问题无法区分于代码问题，或证据链不完整。
 
 ### V1-F9-08：使用真实 provider 演示 Branch B 和预算降级
@@ -143,7 +143,7 @@
 - **输出**：真实 fuzzy 交互、catalog、broad fallback、selector/request over-budget 与增强层失败演示记录
 - **允许修改路径**：运行 artifacts、当前任务记录、必要用户文档
 - **禁止修改边界**：不得记录密钥或跳过失败路径证据检查
-- **步骤**：使用“分析 `pico/` 文件夹内容”等目录类请求演示 confirmed focused、目录软偏好、source/test 偏好、catalog 已展示但 broad map 外文件建议、隐藏 candidate 拒绝、one-shot fallback、selector_request_over_budget、repo map omission、最终请求超预算和受控 MapEngine failure；核验真实 provider payload 中 system/user 角色确实分离，且 selector 只执行文件检索。
+- **步骤**：使用 analysis evidence 证明文件、symbol、path ident 三类有效命中均为空的固定 fuzzy 请求，演示 confirmed focused、source/test 偏好、catalog 已展示但 broad map 外文件建议、隐藏 candidate 拒绝、one-shot fallback、selector_request_over_budget、repo map omission、最终请求超预算和受控 MapEngine failure；核验 selector system prompt 不含目录偏好行，真实 provider payload 中 system/user 角色确实分离，且 selector 只执行文件检索。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pico --cwd .\pico\tests\fixtures\map_engine_eval --map-engine --repl
@@ -159,7 +159,7 @@
 - **输出**：最终用户文档、预算配置、演示说明、全部完成进度
 - **允许修改路径**：README、配置示例、doc/、项目总进度
 - **禁止修改边界**：不得声明未经验证的模型窗口或隐藏失败/限制
-- **步骤**：记录启用方式、ModelRequestBudget CLI/TOML、固定 map budget、catalog、artifact、eval、失败降级和后续方向；完成最终门禁并更新总账。
+- **步骤**：记录启用方式、ModelRequestBudget CLI/TOML、固定 map budget、path-ident Branch A、focus/path personalization、multiplier evidence、三无 Branch B、catalog、artifact、eval、失败降级和后续方向；完成最终门禁并更新总账。
 - **验证命令**：
   ```powershell
   Select-String -Path .\pico\README.md,.\doc\*.md -Pattern "ModelRequestBudget|32768|1024|4096|8192|SelectorCandidateCatalog|selector_request_over_budget"

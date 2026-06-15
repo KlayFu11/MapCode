@@ -7,9 +7,9 @@
 ## 当前输入文档
 
 - `AGENT.md`
-- `PRD_v1_1.md`
-- `SPEC_v1_3.md`
-- `FuncFlow_v1_3.md`
+- `PRD_v1_2.md`
+- `SPEC_v1_4.md`
+- `FuncFlow_v1_4.md`
 - `pico/pyproject.toml`
 
 ## 模块依赖
@@ -81,7 +81,7 @@
 - **验证命令**：
   ```powershell
   Get-ChildItem -Recurse .\doc
-  Select-String -Path .\AGENT*.md,.\doc\tasks\*.md -Pattern "PRD_v1_1.md|SPEC_v1_3.md|FuncFlow_v1_3.md"
+Select-String -Path .\AGENT*.md,.\doc\tasks\*.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md"
   ```
 - **完成标准**：长期事实只从 `doc/PRD.md`、`doc/SPEC.md`、`doc/FuncFlow.md` 读取，旧版明确归档。
 - **回退条件**：迁移造成内容丢失、链接失效或出现两套正式事实源。
@@ -120,7 +120,7 @@
   3. 检查执行 Prompt 能直接启动 V1-F0-06。
 - **验证命令**：
   ```powershell
-  Select-String -Path .\doc\tasks\*.md,.\doc\prompt.md -Pattern "PRD_v1_1.md|SPEC_v1_3.md|FuncFlow_v1_3.md"
+Select-String -Path .\doc\tasks\*.md,.\doc\prompt.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md"
   ```
 - **完成标准**：旧根目录正式文档名不再被活动任务引用。
 - **回退条件**：任务依赖或进度总账出现不一致。

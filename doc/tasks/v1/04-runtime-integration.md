@@ -6,7 +6,7 @@
 
 ## 相关设计
 
-- 当前迁移前来源：`SPEC_v1_3.md` 第九、十、十三、十四、十六、十七章。
+- 当前迁移前来源：`SPEC_v1_4.md` 第九、十、十三、十四、十六、十七章。
 - 迁移后来源：`doc/SPEC.md`。
 
 ## 模块依赖
@@ -124,15 +124,15 @@
 - **优先级**：P0
 - **依赖**：V1-F4-03
 - **输入**：当前最新 SPEC/PRD/FuncFlow、依赖任务产物、任务允许修改路径中的真实源码与测试
-- **输出**：retrieval phase 映射与事件标准化测试
+- **输出**：可承载 path-ident、personalization 和 multiplier 摘要的 retrieval phase 映射与事件标准化测试
 - **允许修改路径**：`pico/pico/core/runtime_events.py`、`pico/tests/test_runtime_evidence_acceptance.py`
 - **禁止修改边界**：不得新增旁路 TraceWriter
-- **步骤**：注册 run-level map 事件；保留 selector candidate counts、input chars 和预算/omission 摘要承载位置；验证 phase 与状态。
+- **步骤**：注册 run-level map 事件；为 `map_prompt_analyzed` 保留完整 path-ident 命中摘要，为 `map_context_ranked` 保留 focus/path personalization、最终 personalization 和 contributor multiplier/reason codes 摘要；保留 selector candidate counts、input chars 和预算/omission 摘要承载位置；验证 phase 与状态。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_runtime_evidence_acceptance.py -q
   ```
-- **完成标准**：所有 run-level map trace 继续经 `runtime.emit_trace()`。
+- **完成标准**：所有 run-level map trace 继续经 `runtime.emit_trace()`，且事件 schema 可解释 path-ident Branch 判断和排名输入。
 - **回退条件**：新增独立 trace writer 或事件 phase 不一致。
 
 ### V1-F4-08：实现 Coordinator 数据适配与 selector catalog 接口
@@ -143,12 +143,12 @@
 - **输出**：`MapContextCoordinator` analyze/prepare/build_selector_catalog/finalize 接口骨架与 adapter tests
 - **允许修改路径**：`pico/pico/core/map_context.py`、`pico/tests/test_map_context.py`
 - **禁止修改边界**：不得调用模型、`ask_user()`、决定 Branch 或执行 selector 请求预算门禁
-- **步骤**：注入 Runtime/MapEngine/RunStore 依赖；适配 MapEngine 结果、同 snapshot catalog、trace 和持久化接口；先使用 DTO 测试。
+- **步骤**：注入 Runtime/MapEngine/RunStore 依赖；适配 MapEngine 结果、同 snapshot catalog、trace 和持久化接口；`analyze_turn()` 按同一 snapshot 发出包含 `path_ident_hits/path_ident_hit_files` 的 analyzed 事实，ranked 事实保留 focus/path personalization 与 multiplier 摘要；先使用 DTO 测试。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context.py -q
   ```
-- **完成标准**：Coordinator 能返回同 snapshot 的 SelectorCandidateCatalog，无控制面越界。
+- **完成标准**：Coordinator 能返回同 snapshot 的 SelectorCandidateCatalog，并完整传递 path-ident/ranking 事实，无控制面越界。
 - **回退条件**：Coordinator 成为第二个 Engine、直接构建主模型 prompt 或自行判断 selector 超预算。
 
 ### V1-F4-09：实现 MapEngineConsoleReporter

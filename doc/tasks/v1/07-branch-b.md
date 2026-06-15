@@ -2,11 +2,11 @@
 
 ## 模块目标
 
-完成基于同一 SymbolIndex snapshot 的 broad map、SelectorCandidateCatalog、双角色 selector request、请求预算门禁、整组确认和准确 broad fallback。
+完成仅针对文件、symbol、path ident 均无有效命中的 fuzzy 请求的 broad map、SelectorCandidateCatalog、双角色 selector request、请求预算门禁、整组确认和准确 broad fallback。
 
 ## 相关设计
 
-- 当前迁移前来源：`SPEC_v1_3.md` 6.5、9.3、11.2、11.3、16、17.3。
+- 当前迁移前来源：`SPEC_v1_4.md` 6.5、9.3、11.2、11.3、16、17.3。
 - 迁移后来源：`doc/SPEC.md`。
 
 ## 模块依赖
@@ -17,7 +17,7 @@
 
 - **允许修改**：Engine Branch B 控制流、`map_selector.py`、Coordinator 最小适配、Branch B tests。
 - **禁止修改**：MapEngine 排名算法、ContextManager 新行为、部分接受/调整建议文件功能。
-- **模块原则**：selector request builder/parser 是纯 helper；Engine 编排 catalog、完整请求预算门禁、模型调用与确认；Coordinator 不做控制决策；`candidate_paths` 只证明 snapshot 来源，selector 返回路径必须存在于模型实际可见的 `visible_paths`。
+- **模块原则**：selector request builder/parser 是纯 helper；Engine 只为三类有效命中均为空的 Branch B 编排 catalog、完整请求预算门禁、模型调用与确认；Coordinator 不做控制决策；`candidate_paths` 只证明 snapshot 来源，selector 返回路径必须存在于模型实际可见的 `visible_paths`。
 
 ## 任务列表
 
@@ -29,7 +29,7 @@
 - **输出**：双角色 selector request builder、parser、confirmation renderer 与 DTO tests
 - **允许修改路径**：`pico/pico/core/map_selector.py`、`pico/tests/test_map_selector.py`
 - **禁止修改边界**：不得调用模型、读取 MapEngine 或直接形成用户决策
-- **步骤**：构建固定 `system_prompt` 与三段式动态 `user_prompt`；system role 将 selector 限定为只负责文件检索，不修改、不测试、不调用工具、不制定实现计划；普通分析优先 source 文件，仅明确需要时选择 test 文件；目录路径只作为软偏好，不做硬过滤；替换最大文件数占位符；以 broad rendered files 与 `catalog.rendered_paths` 的稳定并集生成 `visible_paths`；解析只含 `suggested_files`、`reasoning` 的严格 JSON object，稳定去重并限制数量；只接受 `visible_paths`，拒绝只存在于 `candidate_paths` 但未展示给模型的隐藏路径；禁止裁剪原始 JSON 后再解析。
+- **步骤**：构建固定 `system_prompt` 与三段式动态 `user_prompt`；system role 将 selector 限定为只负责文件检索，不修改、不测试、不调用工具、不制定实现计划；普通分析优先 source 文件，仅明确需要时选择 test 文件；不得包含目录样式输入偏好规则；替换最大文件数占位符；以 broad rendered files 与 `catalog.rendered_paths` 的稳定并集生成 `visible_paths`；解析只含 `suggested_files`、`reasoning` 的严格 JSON object，稳定去重并限制数量；只接受 `visible_paths`，拒绝只存在于 `candidate_paths` 但未展示给模型的隐藏路径；禁止裁剪原始 JSON 后再解析。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_selector.py -q
@@ -45,7 +45,7 @@
 - **输出**：同 snapshot catalog、完整 SelectorModelRequest、`selector_request_over_budget` broad fallback tests
 - **允许修改路径**：`pico/pico/core/engine.py`、`map_context.py` 最小适配、Branch B tests
 - **禁止修改边界**：不得在超预算路径调用模型、发送 map_selector_requested 或增加 selector_model_calls
-- **步骤**：fuzzy 时 prepare broad 并展示；从 Coordinator 获取同 snapshot catalog；构建完整 `system_prompt + user_prompt + visible_paths` 请求；对 `system_prompt + user_prompt` 使用同一 ModelRequestBudget 执行硬门禁。
+- **步骤**：仅当 `mentioned_files`、`effective_symbol_hits`、`path_ident_hits` 均为空时 prepare broad 并展示；从 Coordinator 获取同 snapshot catalog；构建完整 `system_prompt + user_prompt + visible_paths` 请求；对 `system_prompt + user_prompt` 使用同一 ModelRequestBudget 执行硬门禁。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context_branch_b_acceptance.py pico\tests\test_engine_acceptance.py -q
@@ -125,11 +125,11 @@
 - **输出**：完整 Branch B scripted acceptance tests
 - **允许修改路径**：Branch B acceptance fixture/tests
 - **禁止修改边界**：不得依赖真实模型
-- **步骤**：覆盖 broad 展示在 selector 前、固定 system prompt、三段式 user prompt、完整请求预算、`visible_paths` 稳定并集、隐藏 candidate 拒绝、目录软偏好、source/test 偏好、selector 超预算、final 展示在主模型前、trace 顺序、调用统计和全部 fallback。
+- **步骤**：覆盖三类有效命中均为空才进入 Branch B、path-ident-only 不进入 Branch B、broad 展示在 selector 前、固定 system prompt 不含目录偏好行、三段式 user prompt、完整请求预算、`visible_paths` 稳定并集、隐藏 candidate 拒绝、source/test 偏好、selector 超预算、final 展示在主模型前、trace 顺序、调用统计和全部 fallback。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_selector.py pico\tests\test_map_context_branch_b_acceptance.py pico\tests\test_engine_acceptance.py -q
   .\.venv\Scripts\python.exe -m ruff check pico\pico pico\tests
   ```
-- **完成标准**：阶段 7 门禁通过；双角色请求、可见路径校验、完整请求预算、目录/source/test 偏好与 broad fallback 行为可离线复现。
+- **完成标准**：阶段 7 门禁通过；Branch B 三无条件、双角色请求、可见路径校验、完整请求预算、source/test 偏好与 broad fallback 行为可离线复现。
 - **回退条件**：事件时序、用户可见输出、snapshot 关系或模型调用统计不一致。

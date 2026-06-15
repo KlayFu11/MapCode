@@ -2,11 +2,11 @@
 
 ## 模块目标
 
-完成 MapCode v1 的 trace、repo-map artifact、map evidence artifact、report、CLI/TUI 展示，以及 selector catalog、请求预算、base prompt reduction、omission 和超预算降级证据一致性。
+完成 MapCode v1 的 trace、repo-map artifact、map evidence artifact、report、CLI/TUI 展示，以及 path-ident、focus/path personalization、multiplier、selector catalog、请求预算、base prompt reduction、omission 和超预算降级证据一致性。
 
 ## 相关设计
 
-- 当前迁移前来源：`SPEC_v1_3.md` 第十三、十四、十六、十七章。
+- 当前迁移前来源：`SPEC_v1_4.md` 第十三、十四、十六、十七章。
 - 迁移后来源：`doc/SPEC.md`。
 
 ## 模块依赖
@@ -29,7 +29,7 @@
 - **输出**：index/analyzed/ranked/selected/selector/confirmed/generated/failed 与预算摘要事件 tests
 - **允许修改路径**：`map_context.py`、`runtime_events.py`、runtime evidence tests
 - **禁止修改边界**：不得新增旁路 writer、复制完整 map/catalog 或把正常 fallback 记为 failed
-- **步骤**：经 `runtime.emit_trace()` 写 run-level 摘要；selector requested 记录 snapshot/candidate/rendered/visible/input chars/call，其中 selector input chars 表示完整 `system_prompt + user_prompt` 双角色请求；prompt_built 明确记录 render、reservation、`base_prompt_reduction_applied`、omission、request_over_budget。
+- **步骤**：经 `runtime.emit_trace()` 写 run-level 摘要；`map_prompt_analyzed` 记录文件/idents/symbol hits/path-ident hits 与全量 hit-files；`map_context_ranked` 记录 focus/path/final personalization 和 contributor multiplier/reason codes；selector requested 记录 snapshot/candidate/rendered/visible/input chars/call，其中 selector input chars 表示完整 `system_prompt + user_prompt` 双角色请求；prompt_built 明确记录 render、reservation、`base_prompt_reduction_applied`、omission、request_over_budget。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context_evidence_acceptance.py pico\tests\test_runtime_evidence_acceptance.py -q
@@ -61,12 +61,12 @@
 - **输出**：完整 MapEvidenceArtifact JSON 与 schema tests
 - **允许修改路径**：`map_context.py`、evidence tests
 - **禁止修改边界**：不得保存完整 repo map/catalog 文本或 evidence artifact 自身路径
-- **步骤**：组装 run envelope、broad/active result、selection、catalog 摘要、prompt injection、budget metadata 和 repo-map path。
+- **步骤**：组装 run envelope、broad/active result、selection、catalog 摘要、prompt injection、budget metadata 和 repo-map path；完整保留 `path_ident_hit_files` 全局匹配事实、focus/path personalization 过滤结果、multiplier evidence 和 rendered/omitted 文件级 `prompt_path_ident_hits` 反向投影。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context_evidence_acceptance.py -q
   ```
-- **完成标准**：JSON 可回答为什么选择文件、catalog/selector 如何工作、使用什么预算，以及 `base_prompt_reduction_applied`、omission、over-budget 的结构化事实。
+- **完成标准**：JSON 可回答 path ident 命中了哪些 indexed files、哪些进入图节点/personalization、为什么某文件获得或未获得 outbound boost、catalog/selector 如何工作、使用什么预算，以及 `base_prompt_reduction_applied`、omission、over-budget 的结构化事实。
 - **回退条件**：evidence 从最终字符串反推或包含循环路径引用。
 
 ### V1-F8-04：report 增加 MapContext、预算与模型调用摘要
@@ -126,11 +126,11 @@
 - **输出**：完整证据链 acceptance suite
 - **允许修改路径**：evidence/runtime/report/CLI/TUI acceptance tests
 - **禁止修改边界**：不得通过放宽断言隐藏证据不一致
-- **步骤**：覆盖 Branch A/B、catalog、完整 selector request 摘要、`visible_paths`、隐藏 candidate 拒绝、selector_request_over_budget、base prompt reduction、repo map omission、最终请求超预算、artifact failure、redaction 和各层一致性；验证 evidence 不把 `candidate_paths` 混同为允许返回的可见路径。
+- **步骤**：覆盖文件/symbol/path-ident Branch A、三无 Branch B、path-ident 原始大小写与全量 hit-files、图节点过滤、focus/path personalization 隔离、path personalization 无 outbound boost、multiplier/reason codes、文件级 `prompt_path_ident_hits`、catalog、完整 selector request 摘要、`visible_paths`、隐藏 candidate 拒绝、selector_request_over_budget、base prompt reduction、repo map omission、最终请求超预算、artifact failure、redaction 和各层一致性；验证 evidence 不把 `candidate_paths` 混同为允许返回的可见路径。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context_evidence_acceptance.py pico\tests\test_runtime_evidence_acceptance.py pico\tests\test_tui.py -q
   .\.venv\Scripts\python.exe -m ruff check pico\pico pico\tests
   ```
-- **完成标准**：阶段 8 门禁通过；完整双角色 selector request 摘要与可见路径校验事实一致；完整证据链可离线复盘。
+- **完成标准**：阶段 8 门禁通过；path-ident 与 multiplier 证据可从 trace/artifact/report 一致复盘；完整双角色 selector request 摘要与可见路径校验事实一致。
 - **回退条件**：任何层产生其他层无法证明的新事实。

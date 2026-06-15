@@ -6,7 +6,7 @@
 
 ## 相关设计
 
-- 当前迁移前来源：`SPEC_v1_3.md` 9、10、11.1、11.3、14、16、17.2 至 17.5。
+- 当前迁移前来源：`SPEC_v1_4.md` 9、10、11.1、11.3、14、16、17.2 至 17.5。
 - 迁移后来源：`doc/SPEC.md`。
 
 ## 模块依赖
@@ -26,15 +26,15 @@
 - **优先级**：P0
 - **依赖**：V1-F5-09
 - **输入**：当前最新 SPEC/PRD/FuncFlow、Coordinator、Engine.run_turn 真实接缝
-- **输出**：specific Branch preparation 接缝与事件
+- **输出**：文件、symbol 或 path-ident 任一有效命中时的 specific Branch preparation 接缝与事件
 - **允许修改路径**：`pico/pico/core/engine.py`、`map_context.py`、相关 tests
 - **禁止修改边界**：不得实现 Branch B selector 或在 ContextManager/runtime wrapper 触发 preparation
-- **步骤**：run_started 后分析请求；specific 时 prepare focused；设置 prepared current map；异常时 emit failure 并继续。
+- **步骤**：run_started 后分析请求；`mentioned_files`、`effective_symbol_hits` 或 `path_ident_hits` 任一非空时进入 specific 并 prepare focused；path-ident-only 保持 `focus_fnames=()`，直接使用 path-personalized focused map；设置 prepared current map；异常时 emit failure 并继续。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context_branch_a_acceptance.py pico\tests\test_engine_acceptance.py -q
   ```
-- **完成标准**：preparation 发生在首次 main_model build 前且每 run 仅一次。
+- **完成标准**：preparation 发生在首次 main_model build 前且每 run 仅一次；path-ident-only Branch A 不调用 selector。
 - **回退条件**：preparation 放入 ContextManager/runtime wrapper，或控制流因行数门禁被拆散。
 
 ### V1-F6-02：首次 main model build 后持久化 artifacts
@@ -158,11 +158,11 @@
 - **输出**：完整 Branch A scripted end-to-end acceptance
 - **允许修改路径**：Branch A acceptance fixture/tests
 - **禁止修改边界**：不得依赖真实模型
-- **步骤**：覆盖明确文件、symbol-only/精确 DefinitionRecord 前缀、统一主模型导航模板、`focus_files_display`/`active_repo_map_text` 来源、首个 read_file、tool loop、artifacts、预算、trace/report、所有失败和超预算降级；验证主模型保持单一组合 prompt，不增加 provider-level system prompt。
+- **步骤**：覆盖明确文件、symbol-only/精确 DefinitionRecord 前缀、path-ident-only specific、不调用 selector、`focus_fnames=()`、path-personalized focused map、统一主模型导航模板、`focus_files_display`/`active_repo_map_text` 来源、首个 read_file、tool loop、artifacts、预算、trace/report、所有失败和超预算降级；验证主模型保持单一组合 prompt，不增加 provider-level system prompt。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context_branch_a_acceptance.py pico\tests\test_map_context_evidence_acceptance.py pico\tests\test_engine_acceptance.py -q
   .\.venv\Scripts\python.exe -m ruff check pico\pico pico\tests
   ```
-- **完成标准**：阶段 6 门禁通过；Branch A 使用统一导航模板且变量来源准确；形成首个可运行 MapCode v1 垂直切片。
+- **完成标准**：阶段 6 门禁通过；文件、symbol、path-ident 三类 specific 请求均进入 Branch A；统一导航模板及变量来源准确；形成首个可运行 MapCode v1 垂直切片。
 - **回退条件**：测试依赖真实模型或不能证明 evidence、预算门禁与实际 prompt/provider 调用一致。

@@ -2,7 +2,7 @@
 
 ## 项目目标
 
-基于 Pico 当前 runtime 增量实现 MapCode 产品 v1；当前实现契约以 `SPEC_v1_3.md` 为准：在首次主模型调用前使用确定性 MapEngine 生成 broad/focused repo map，按最终模型输入预算原子注入完整 repo map section，并通过 artifact、trace、report、terminal 和 retrieval eval 完整复盘上下文选择与请求预算决策。
+基于 Pico 当前 runtime 增量实现 MapCode 产品 v1；当前实现契约以 `SPEC_v1_4.md` 为准：在首次主模型调用前使用确定性 MapEngine 分析文件、symbol 和 path-ident 信号，生成 broad/focused repo map，按最终模型输入预算原子注入完整 repo map section，并通过 artifact、trace、report、terminal 和 retrieval eval 完整复盘上下文选择、排名贡献与请求预算决策。
 
 ## 当前项目阶段
 
@@ -16,9 +16,9 @@
 
 1. `AGENT.md`，或阶段 0 统一后的唯一规则入口。
 2. 阶段 0 文档迁移前：
-   - `PRD_v1_1.md`
-   - `SPEC_v1_3.md`
-   - `FuncFlow_v1_3.md`
+- `PRD_v1_2.md`
+   - `SPEC_v1_4.md`
+   - `FuncFlow_v1_4.md`
 3. 阶段 0 文档迁移后：
    - `doc/PRD.md`
    - `doc/SPEC.md`
@@ -44,7 +44,10 @@ SPEC > PRD > FuncFlow > doc/tasks > 当前 .planning > 聊天记录
 - selector 请求使用 `SelectorModelRequest(system_prompt, user_prompt, visible_paths)`；provider 必须保留 system/user 角色，主模型继续使用单一组合 prompt。
 - selector `visible_paths` 是 broad rendered files 与 catalog `rendered_paths` 的稳定并集；`candidate_paths` 只证明 snapshot 来源，隐藏 candidate 必须拒绝。
 - 完整 `system_prompt + user_prompt` 参与 ModelRequestBudget 门禁。
-- `pico/`、`src/` 等目录片段不进入 `mentioned_files`，不新增 `mentioned_dirs`；目录类请求进入 Branch B fuzzy，目录路径只作为 selector 软偏好。
+- `pico/`、`src/` 等目录样式片段不进入 `mentioned_files`，不新增 `mentioned_dirs`；它们通过 `mentioned_idents` 与 indexed path terms 匹配形成 path-ident 事实，有效命中时进入 Branch A，但不形成文件 focus、目录 scope 或读取授权。
+- Branch B 只在 `mentioned_files`、`effective_symbol_hits`、`path_ident_hits` 均为空时触发；selector system prompt 不包含目录偏好规则。
+- `focus_personalization_files` 与 `path_personalization_files` 分离，`personalization_files` 是稳定并集；只有 focus personalization files 获得 `FOCUS_OUTBOUND_BOOST`。
+- trace/evidence/eval 必须保留原始 path ident、全量 `path_ident_hit_files`、图节点过滤、文件级 `prompt_path_ident_hits` 和 Aider-style multiplier/reason codes。
 - 普通分析优先 source 文件，仅在明确需要时选择 test 文件。
 - Branch A、Branch B focused 和 Branch B broad fallback 使用同一主模型导航模板，由 `focus_files_display` 和 `active_repo_map_text` 驱动；主模型不增加 provider-level system prompt。
 - broad fallback 复用原始请求与 broad map，不重跑 selector、不重新询问用户、不要求重新输入 prompt。

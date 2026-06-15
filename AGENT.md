@@ -35,14 +35,14 @@ MapCode的价值在于把本地 Coding Agent 的文件选择过程，从“搜�
 
 ## 文档导航
 
-- MapCode v1 PRD查阅"D:\VScodeProject\MapCode\PRD_v1_1.md"
-- MapCode v1 SEPC查阅"D:\VScodeProject\MapCode\SPEC_v1_3.md"
-- MapCode v1 功能流程说明查阅"D:\VScodeProject\MapCode\FuncFlow_v1_3.md"
+- MapCode v1 PRD查阅"D:\VScodeProject\MapCode\PRD_v1_2.md"
+- MapCode v1 SEPC查阅"D:\VScodeProject\MapCode\SPEC_v1_4.md"
+- MapCode v1 功能流程说明查阅"D:\VScodeProject\MapCode\FuncFlow_v1_4.md"
 - 项目各类文档中出现的专有术语查阅"D:\VScodeProject\MapCode\Specialized Terminology.md"
 - aider项目简介查阅"D:\VScodeProject\MapCode\adier.md"
 - MapCode项目中aider中被插入pico的功能模块部分查阅"D:\VScodeProject\MapCode\aider_module.md"
 - pico项目简介查阅"D:\VScodeProject\MapCode\pico.md"
-- pico架构和设计文档查阅D:\VScodeProject\MapCode\pico\release\v3\learning
+- pico架构和设计文档查阅D:\VScodeProject\MapCode\pico_origin\release\v3\learning
 
 
 ## 长期项目文档治理规则

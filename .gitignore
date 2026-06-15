@@ -4,12 +4,14 @@
 # Keep gitignore itself
 !.gitignore
 
+
+
 # Keep root docs / agent rules
 !README.md
 !AGENT.md
-!FuncFlow_v1_3.md
-!SPEC_v1_3.md
-
+!PRD/PRD_v1_2.md
+!FuncFlow/FuncFlow_v1_4.md
+!SPEC/SPEC_v1_4.md
 
 # Keep selected source directories
 !pico/

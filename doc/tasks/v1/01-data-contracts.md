@@ -6,7 +6,7 @@
 
 ## 相关设计
 
-- 当前迁移前来源：`SPEC_v1_3.md` 第六章与第七章、`PRD_v1_1.md` 模块契约。
+- 当前迁移前来源：`SPEC_v1_4.md` 第六章与第七章、`PRD_v1_2.md` 模块契约。
 - 迁移后来源：`doc/SPEC.md`。
 
 ## 模块依赖
@@ -29,12 +29,12 @@
 - **输出**：`pico/pico/features/map_engine/__init__.py`、`config.py`、配置测试
 - **允许修改路径**：`pico/pico/features/map_engine/`、`pico/tests/test_map_engine_config.py`
 - **禁止修改边界**：不得实现索引、排名、runtime 请求预算或 runtime 接入
-- **步骤**：定义 focused `4_096`、broad `8_192` token budget，selector catalog 三项限制、schema/parser/query/ranking 版本和 PageRank 参数；测试唯一事实源。
+- **步骤**：定义 focused `4_096`、broad `8_192` token budget，selector catalog 三项限制、schema/parser/query/ranking 版本、PageRank 参数，以及 `IDENT_BOOST`、structured/private/common multiplier、`FOCUS_OUTBOUND_BOOST` 和 contributor limit；测试唯一事实源。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_engine_config.py -q
   ```
-- **完成标准**：MapEngine 固定参数与 `SPEC_v1_3.md` 一致，focused budget 不因 focus 文件存在而变化。
+- **完成标准**：MapEngine 固定参数与 `SPEC_v1_4.md` 一致；focused budget 不因 focus 文件存在而变化；Aider-style multiplier 参数不分散到 GraphRanker。
 - **回退条件**：配置值分散到其他模块、继续使用字符 budget 作为 MapEngine 预算名称，或与 SPEC 不一致。
 
 ### V1-F1-02：定义索引基础 DTO
@@ -58,15 +58,15 @@
 - **优先级**：P0
 - **依赖**：V1-F1-02
 - **输入**：当前最新 SPEC/PRD/FuncFlow、依赖任务产物、任务允许修改路径中的真实源码与测试
-- **输出**：排名贡献、rendered/omitted file、ranking/rendering/cache evidence DTO
+- **输出**：包含 path-ident 与 multiplier 审计字段的排名贡献、rendered/omitted file、ranking/rendering/cache evidence DTO
 - **允许修改路径**：`pico/pico/features/map_engine/models.py`、`pico/tests/test_map_engine_models.py`
 - **禁止修改边界**：不得实现 evidence 推导算法
-- **步骤**：定义字段与 Literal 范围；RenderingEvidence 固定记录 `target_tokens`、`target_chars`、`used_chars`、`estimated_tokens`、`budget_reduction_applied`、`focus_truncated`。
+- **步骤**：定义字段与 Literal 范围；`RankContributorEvidence` 增加 `weight_multiplier/weight_reason_codes`；Rendered/Omitted file evidence 增加 `prompt_path_ident_hits`；RankingEvidence 区分 `focus_personalization_files`、`path_personalization_files` 和稳定并集 `personalization_files`；RenderingEvidence 固定记录 `target_tokens`、`target_chars`、`used_chars`、`estimated_tokens`、`budget_reduction_applied`、`focus_truncated`。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_engine_models.py -q
   ```
-- **完成标准**：MapEngine token budget 和 ranking/rendering 事实无需松散 dict 传递。
+- **完成标准**：MapEngine token budget、focus/path personalization、文件级 path-ident 命中和最终 multiplier 事实无需松散 dict 传递。
 - **回退条件**：同一字段同时表达 MapEngine 截断与 ContextManager base prompt reduction。
 
 ### V1-F1-04：定义 PromptAnalysis、MapContextEvidence 与 MapResult
@@ -74,15 +74,15 @@
 - **优先级**：P0
 - **依赖**：V1-F1-03
 - **输入**：当前最新 SPEC/PRD/FuncFlow、依赖任务产物、任务允许修改路径中的真实源码与测试
-- **输出**：MapEngine 主要输入/输出 DTO
+- **输出**：包含 path-ident 全量匹配事实的 MapEngine 主要输入/输出 DTO
 - **允许修改路径**：`pico/pico/features/map_engine/models.py`、`pico/tests/test_map_engine_models.py`
 - **禁止修改边界**：不得包含 selector、run id、artifact path 或终端文本
-- **步骤**：定义三个 immutable DTO；测试 `effective_symbol_hits`、MapContextEvidence 确定性边界和 MapResult 主要输出契约。
+- **步骤**：定义三个 immutable DTO；为 PromptAnalysis 增加 `path_ident_hits` 与只读 `path_ident_hit_files`；测试 key 顺序等于 hits 顺序、原始大小写保留、value 全量稳定排序、不可变性、`effective_symbol_hits`、MapContextEvidence 确定性边界和 MapResult 主要输出契约。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_engine_models.py -q
   ```
-- **完成标准**：MapEngine 唯一主要 map 输出是结构化 `MapResult`。
+- **完成标准**：PromptAnalysis 可完整证明 path ident 到全部 indexed file matches 的映射；MapEngine 唯一主要 map 输出是结构化 `MapResult`。
 - **回退条件**：MapEngine-owned DTO 依赖 Pico runtime 事实。
 
 ### V1-F1-05：定义 SelectorCandidateCatalog DTO

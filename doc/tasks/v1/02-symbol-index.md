@@ -6,7 +6,7 @@
 
 ## 相关设计
 
-- 当前迁移前来源：`SPEC_v1_3.md` 7.3、7.4、16、17.1。
+- 当前迁移前来源：`SPEC_v1_4.md` 7.3、7.4、16、17.1。
 - 迁移后来源：`doc/SPEC.md`。
 
 ## 模块依赖
@@ -90,15 +90,15 @@
 - **优先级**：P0
 - **依赖**：V1-F2-04
 - **输入**：当前最新 SPEC/FuncFlow、依赖任务产物、任务允许修改路径中的真实源码与测试
-- **输出**：包含 `all_defs`、definitions、references、file_records 的只读 SymbolIndex 与 canonical snapshot id
+- **输出**：包含 `all_defs`、definitions、references、完整 `file_records` 的只读 SymbolIndex 与 canonical snapshot id
 - **允许修改路径**：`symbol_index.py`、`test_map_engine_symbol_index.py`
 - **禁止修改边界**：不得运行 PageRank 或生成 prompt 文本
-- **步骤**：构建 `all_defs`、`definitions_by_symbol`、`definitions_by_file`、`references_by_file`、`file_records`；按 SPEC canonical JSON 规则生成 snapshot id；保证后续 PromptAnalyzer、focused symbol 前缀和 SelectorCandidateCatalog 读取同一 snapshot。
+- **步骤**：构建 `all_defs`、`definitions_by_symbol`、`definitions_by_file`、`references_by_file`、`file_records`；按 SPEC canonical JSON 规则生成 snapshot id；保证后续 PromptAnalyzer 基于同一 snapshot 的 indexed paths 构造 path match terms，并与 focused symbol 前缀、SelectorCandidateCatalog 复用同一 snapshot；不新增独立持久化 path-terms DTO。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_engine_symbol_index.py -q
   ```
-- **完成标准**：相同有序文件元数据和版本产生相同 snapshot id；同一 snapshot 可同时提供 symbol 命中、精确 DefinitionRecord 和全量 candidate paths。
+- **完成标准**：相同有序文件元数据和版本产生相同 snapshot id；同一 snapshot 可同时提供 symbol 命中、精确 DefinitionRecord、path-ident 匹配来源和全量 candidate paths。
 - **回退条件**：snapshot id 受 dict 插入顺序或 ranking policy 影响。
 
 ### V1-F2-06：实现 index/cache 读取与 cache hit
