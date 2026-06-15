@@ -1,10 +1,28 @@
 # Ignore everything by default
 *
 
+# 1. 忽略 Python 运行缓存
+__pycache__/
+*.py[cod]
+
+# 2. 忽略环境配置和敏感信息（做大模型应用必须忽略！）
+.env
+.DS_Store
+
+# 3. 忽略 IDE 配置文件
+.vscode/
+.idea/
+
 # Keep gitignore itself
 !.gitignore
 
-
+# Keep first level docs
+!SPEC/
+SPEC/*
+!FuncFlow/
+FuncFlow/*
+!PRD/
+PRD/*
 
 # Keep root docs / agent rules
 !README.md
