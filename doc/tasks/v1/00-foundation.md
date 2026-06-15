@@ -2,7 +2,7 @@
 
 ## 模块目标
 
-在任何 MapEngine 代码实现前，建立可审计的 Git 基线、长期文档目录、项目虚拟环境、依赖兼容性结论和阶段三任务治理文件。
+在任何 MapEngine 代码实现前，建立可审计的 Git 基线、根目录版本化事实文档治理、项目虚拟环境、依赖兼容性结论和阶段三任务治理文件。
 
 ## 当前输入文档
 
@@ -65,26 +65,28 @@
 - **完成标准**：项目只有一套事实优先级和一个规则入口。
 - **回退条件**：规则修改引入新的冲突或改变需求边界。
 
-### V1-F0-03：迁移正式文档至 `doc/` 并归档旧版本
+### V1-F0-03：校准根目录版本化事实文档治理
 
 - **优先级**：P0
 - **依赖**：V1-F0-02
-- **输入**：根目录最新与旧版 PRD/SPEC/FuncFlow
-- **输出**：`doc/PRD.md`、`doc/SPEC.md`、`doc/FuncFlow.md`、`doc/archive/`
-- **允许修改路径**：`doc/`、规则文件、文档内部链接
-- **禁止修改边界**：不得在迁移时重写已确认的需求和设计语义
+- **输入**：根目录当前活动与历史修订版 PRD/SPEC/FuncFlow、`AGENT.md` 文档导航规则
+- **输出**：根目录版本化事实文档治理、准确的当前活动版本引用与历史修订保留规则
+- **允许修改路径**：根目录 PRD/SPEC/FuncFlow、规则文件、施工文档内部链接
+- **禁止修改边界**：不得把 PRD/SPEC/FuncFlow 迁入 `doc/`，不得删除历史修订或重写已确认语义
 - **步骤**：
-  1. 将最新版本迁移为长期事实文件。
-  2. 将旧版本移入 `doc/archive/`。
-  3. 更新规则文件和任务文件中的文档引用。
-  4. 对迁移前后最新文档执行内容一致性检查。
+  1. 核验当前活动 PRD/SPEC/FuncFlow 均以版本化文件名直接位于项目根目录。
+  2. 保留历史修订文件原位，通过文件名区分修订版本，不创建 `doc/` 下的无版本事实副本。
+  3. 更新规则文件和任务文件，使活动引用统一指向当前根目录版本。
+  4. 检查活动文档导航唯一、事实优先级一致且历史修订不会被误当作当前事实。
 - **验证命令**：
   ```powershell
-  Get-ChildItem -Recurse .\doc
-Select-String -Path .\AGENT*.md,.\doc\tasks\*.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md"
+  Get-ChildItem . -File -Filter "PRD_v*.md"
+  Get-ChildItem . -File -Filter "SPEC_v*.md"
+  Get-ChildItem . -File -Filter "FuncFlow_v*.md"
+  Select-String -Path .\AGENT*.md,.\doc\tasks\v1\*.md,.\doc\prompt.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md|doc/PRD.md|doc/SPEC.md|doc/FuncFlow.md"
   ```
-- **完成标准**：长期事实只从 `doc/PRD.md`、`doc/SPEC.md`、`doc/FuncFlow.md` 读取，旧版明确归档。
-- **回退条件**：迁移造成内容丢失、链接失效或出现两套正式事实源。
+- **完成标准**：当前事实只从根目录活动版本读取；历史修订保留原位；活动施工文档不引用 `doc/` 下的无版本 PRD/SPEC/FuncFlow。
+- **回退条件**：活动版本导航不唯一、历史修订被删除，或出现 `doc/` 下的第二套事实源。
 
 ### V1-F0-04：记录 Pico/Aider 基线来源、只读用途和许可证边界
 
@@ -111,18 +113,18 @@ Select-String -Path .\AGENT*.md,.\doc\tasks\*.md -Pattern "PRD_v1_2.md|SPEC_v1_4
 - **优先级**：P0
 - **依赖**：V1-F0-03
 - **输入**：`doc/tasks/`、`.planning/2026-06-10-mapcode-v1-construction-plan/`
-- **输出**：迁移后引用准确的任务文件、`doc/tasks/v1/progress.md`、`doc/prompt.md`
+- **输出**：活动版本引用准确的任务文件、`doc/tasks/v1/progress.md`、`doc/prompt.md`
 - **允许修改路径**：`doc/tasks/`、`doc/prompt.md`、当前施工计划目录
 - **禁止修改边界**：不得提前勾选未完成实现任务
 - **步骤**：
-  1. 将任务输入引用切换到 `doc/PRD.md`、`doc/SPEC.md`、`doc/FuncFlow.md`。
+  1. 核验任务输入持续引用根目录当前活动版本 `PRD_v1_2.md`、`SPEC_v1_4.md`、`FuncFlow_v1_4.md`。
   2. 检查任务 ID、依赖与总进度账本一致。
   3. 检查执行 Prompt 能直接启动 V1-F0-06。
 - **验证命令**：
   ```powershell
 Select-String -Path .\doc\tasks\*.md,.\doc\prompt.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md"
   ```
-- **完成标准**：旧根目录正式文档名不再被活动任务引用。
+- **完成标准**：活动任务统一引用根目录当前版本，且不引用 `doc/` 下的无版本 PRD/SPEC/FuncFlow。
 - **回退条件**：任务依赖或进度总账出现不一致。
 
 ### V1-F0-06：创建根目录 `.venv` 并验证 Pico baseline

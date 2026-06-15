@@ -15,18 +15,16 @@
 每次实现任务开始前必须读取：
 
 1. `AGENT.md`，或阶段 0 统一后的唯一规则入口。
-2. 阶段 0 文档迁移前：
-- `PRD_v1_2.md`
+2. 根目录当前活动事实文档：
+   - `PRD_v1_2.md`
    - `SPEC_v1_4.md`
    - `FuncFlow_v1_4.md`
-3. 阶段 0 文档迁移后：
-   - `doc/PRD.md`
-   - `doc/SPEC.md`
-   - `doc/FuncFlow.md`
-4. `doc/tasks/progress_cross.md`
-5. `doc/tasks/v1/progress.md`
-6. 当前任务所属的 `doc/tasks/v1/<module>.md`
-7. 与当前任务直接相关的真实 Pico/Aider 源码接缝。
+3. `doc/tasks/progress_cross.md`
+4. `doc/tasks/v1/progress.md`
+5. 当前任务所属的 `doc/tasks/v1/<module>.md`
+6. 与当前任务直接相关的真实 Pico/Aider 源码接缝。
+
+PRD、SPEC、FuncFlow 始终直接维护在项目根目录，以版本化文件名控制修订；不得创建或切换到 `doc/PRD.md`、`doc/SPEC.md`、`doc/FuncFlow.md`。
 
 ## 事实优先级
 
