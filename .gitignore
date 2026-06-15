@@ -17,19 +17,19 @@ __pycache__/
 !.gitignore
 
 # Keep first level docs
-!SPEC/
-SPEC/*
-!FuncFlow/
-FuncFlow/*
-!PRD/
-PRD/*
+# !SPEC/
+# SPEC/*
+# !FuncFlow/
+# FuncFlow/*
+# !PRD/
+# PRD/*
 
 # Keep root docs / agent rules
 !README.md
 !AGENT.md
-!PRD/PRD_v1_2.md
-!FuncFlow/FuncFlow_v1_4.md
-!SPEC/SPEC_v1_4.md
+!PRD_v1_2.md
+!FuncFlow_v1_4.md
+!SPEC_v1_4.md
 
 # Keep selected source directories
 !pico/

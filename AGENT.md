@@ -100,9 +100,10 @@ MapCode的价值在于把本地 Coding Agent 的文件选择过程，从“搜�
 ```markdown
 project/
 ├── AGENT.md
+├── PRD.md						#项目需求
+├── SPEC.md						#项目技术设计
+├── FuncFlow					#项目功能流程
 ├── doc/
-│   ├── PRD.md						#项目需求
-│   ├── SPEC.md						#项目技术设计
 │   ├── prompt.md					#主agent启动prompt	
 │   └── tasks/
 │       ├── progress_cross.md          #跨版本状态和当前活动产品版本
@@ -125,8 +126,8 @@ project/
 ### 4.每次任务开始前准备
 
 1. 读取 AGENT.md
-2. 读取 doc/PRD.md
-3. 读取 doc/SPEC.md
+2. 读取 PRD
+3. 读取 SPEC
 4. 读取 `doc/tasks/progress_cross.md`，确认当前活动产品版本
 5. 读取 `doc/tasks/{product-version}/progress.md`
 6. 读取对应 `doc/tasks/{product-version}/{module-name}.md`
@@ -180,8 +181,8 @@ project/
 
 具体规则：
 
-1. 项目目标、用户场景、功能边界变化：更新 `doc/PRD.md`。
-2. 架构、模块职责、接口、数据流、错误处理、测试策略变化：更新 `doc/SPEC.md`。
+1. 项目目标、用户场景、功能边界变化：更新 `PRD.md`。
+2. 架构、模块职责、接口、数据流、错误处理、测试策略变化：更新 `SPEC.md`。
 3. 任务粒度、依赖关系、输入输出、验证命令变化：更新 `doc/tasks/{product-version}/{module-name}.md`。
 4. 任务完成状态变化：更新 `doc/tasks/{product-version}/progress.md`。
 5. 产品版本状态、当前活动版本或版本进度入口变化：更新 `doc/tasks/progress_cross.md`。
