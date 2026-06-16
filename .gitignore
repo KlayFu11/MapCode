@@ -1,52 +1,63 @@
-# Ignore everything by default
+# Ignore everything by default. Only the allowlist below enters Git audit.
 *
 
 # 1. 忽略 Python 运行缓存
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # 2. 忽略环境配置和敏感信息（做大模型应用必须忽略！）
 .env
+.env.*
 .DS_Store
 
 # 3. 忽略 IDE 配置文件
 .vscode/
 .idea/
 
+# 4. 忽略本地运行产物和只读参考基线
+.venv/
+.pico/
+.planning/
+aider/
+pico_origin/
+PRD/
+SPEC/
+FuncFlow/
+
 # Keep gitignore itself
 !.gitignore
 
-# Keep first level docs
-!SPEC/
-SPEC/*
-!FuncFlow/
-FuncFlow/*
-!PRD/
-PRD/*
-
-# Keep root docs / agent rules
+# Keep root docs / agent rules / current active fact docs
 !README.md
 !AGENT.md
-!PRD/PRD_v1_2.md
-!FuncFlow/FuncFlow_v1_4.md
-!SPEC/SPEC_v1_4.md
+!PRD_v1_2.md
+!FuncFlow_v1_4.md
+!SPEC_v1_4.md
+!experiment_map_engine_dependencies.py
 
 # Keep selected source directories
 !pico/
 !pico/**
+pico/**/__pycache__/
+pico/**/*.py[cod]
+pico/*.egg-info/
+pico/.pytest_cache/
+pico/readme_intro_locked/
 
-!aider/
-!aider/**
 
-!pico_origin/
-!pico_origin/**
 
 !.gitattributes
 
 # Keep project docs
 !doc/
 !doc/**
+<<<<<<< HEAD
 
 
 .DS_Store
 **/.DS_Store
+=======
+>>>>>>> origin/winfeat/dev

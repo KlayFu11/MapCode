@@ -8,14 +8,27 @@ version = "0.3.0"
 description = "Small local coding agent for OpenAI-compatible, Anthropic-compatible, and DeepSeek models"
 requires-python = ">=3.10"
 dependencies = [
+  "grep-ast>=0.9.0,<0.10",
+  "networkx>=3.4.2,<3.5",
   "pydantic>=2.0.0",
+  "scipy>=1.17.1,<1.18",
   "textual>=0.86.0",
+  "tree-sitter>=0.25.2,<0.26",
+  "tree-sitter-language-pack>=0.13.0,<0.14",
   "tomli>=2.0.0; python_version < '3.11'",
+  "tzdata>=2026.2; sys_platform == 'win32'",
 ]
 
 [project.scripts]
 pico = "pico.cli:main"
 pico-tui = "pico.tui.main:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.5",
+  "pytest-asyncio>=0.23.0",
+  "ruff>=0.4.4",
+]
 
 [dependency-groups]
 dev = [

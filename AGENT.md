@@ -7,7 +7,7 @@
 
 ## MapCode项目简介
 
-符号图谱驱动的本地 Coding Agent Harness
+符号图谱驱动的本地 Coding Agent Harness，目前处于项目的第一版本实现阶段。
 MapCode 是一个面向 Agent 应用开发求职场景的本地代码仓库智能体项目，定位为“可解释、可恢复、可评测、可持续运行”的 Coding Agent Harness。项目以 Pico 的本地 Agent Runtime 为工程底座，保留其在模型接入、工具调用、上下文管理、任务恢复、结构化记忆、运行审计与评测闭环上的设计；同时引入 Aider Repo Map 的代码仓库理解能力，将其提炼为独立的 `MapEngine`，作为静态前置检索层与检索决策可观测层接入 Pico。
 
 MapCode 的核心目标不是简单扩大上下文窗口，也不是让模型盲目通过 `read_file` / `search` 逐步试探仓库，而是先通过 tree-sitter 解析源文件，提取 Definition / Reference Tags，构建跨文件符号定义与引用图，并结合 PageRank 在可配置 token 预算内选出与当前任务最相关的文件和符号上下文。由此，Agent 在执行任务前即可获得一份结构化的仓库地图 `repomap.md`，并将其注入 prompt，使模型“带着地图出发”，优先基于符号图谱和检索分数选择上下文，而不是依赖大容量上下文窗口和重复搜索。
@@ -16,15 +16,11 @@ MapCode 的核心目标不是简单扩大上下文窗口，也不是让模型盲
 
 在 MapCode 中，`MapEngine` 负责仓库结构化分析、符号提取、引用关系建图、PageRank 排名、token-budgeted context packing、缓存复用与检索链路记录；Pico 负责 Agent 执行主循环、工具调用、安全审批、上下文裁剪、任务恢复、trace 记录、报告生成与评测闭环。
 
-目前项目处于第一阶段，不实现 Aider 完整交互规则，不做手动 add-to-chat、editable/read-only 文件状态机、多轮自动刷新、embedding、LSP、完整 call graph 或复杂影响分析。v1 重点是验证 repo map 作为静态前置检索层和检索决策可观测层，能否稳定增强 Pico 的仓库理解与上下文选择能力。
-
-MapCode的价值在于把本地 Coding Agent 的文件选择过程，从“搜索关键词 + 直接读文件 + 依赖模型窗口硬推理”，升级为“AST 符号图谱 + 引用关系建模 + PageRank 相关性排序 + token 预算控制 + 可审计检索链路”。它不仅关注 Agent 是否能完成代码分析或修改任务，更关注 Agent 在长链路本地仓库任务中是否具备上下文选择能力、执行过程可解释性、状态可恢复性、工具副作用可控性以及检索质量可评测性。
-
 
 ## 基本约定
 
-- MapCode 的工程演进必须以 Pico 现有 runtime 作为唯一代码底座。所有从 Aider 抽象出的 RepoMap / MapEngine 能力，都必须作为 Pico 现有功能模块、接口、数
-- 据流和执行链路的增强能力接入，而不是另起一个新项目、重建一套 runtime、复制拼接 Pico/Aider 的零散代码片段。除非明确要求重构，否则所有功能实现都应优先在 Pico 当前目录结构、CLI 入口、WorkspaceContext、PromptBuilder、ToolRegistry、Approval、History、Trace / Report 等既有模块上做增量修改。
+- MapCode 的工程演进必须以 Pico 现有 runtime 作为唯一代码底座。所有从 Aider 抽象出的 RepoMap / MapEngine 能力，都必须作为 Pico 现有功能模块、接口、数据流和执行链路的增强能力接入，而不是另起一个新项目、重建一套 runtime、复制拼接 Pico/Aider 的零散代码片段。除非明确要求重构，否则所有功能实现都应优先在 `pico/`，Pico 当前目录结构、CLI 入口、WorkspaceContext、PromptBuilder、ToolRegistry、Approval、History、Trace / Report 等既有模块上做增量修改。
+- 所有 MapCode 产品功能源码，必须基于 `pico/`现有结构增量开发。禁止在项目根目录新建另一套运行时代码。根目录只允许维护项目治理文档、任务计划、环境、实验和必要工程配置。`aider/` 与 `pico_origin/` 只读。
 - 默认使用中文解释；代码、命令、路径、API 字段和变量名保持 English。
 - 修改前先确认项目规则和相关文档，避免只依赖聊天上下文。
 - 单文件小改可以不创建 `.planning/`；复杂任务按下方长期治理规则执行。
@@ -36,10 +32,10 @@ MapCode的价值在于把本地 Coding Agent 的文件选择过程，从“搜�
 ## 文档导航
 
 - MapCode v1 PRD查阅"D:\VScodeProject\MapCode\PRD_v1_2.md"
-- MapCode v1 SEPC查阅"D:\VScodeProject\MapCode\SPEC_v1_4.md"
+- MapCode v1 SPEC查阅"D:\VScodeProject\MapCode\SPEC_v1_4.md"
 - MapCode v1 功能流程说明查阅"D:\VScodeProject\MapCode\FuncFlow_v1_4.md"
 - 项目各类文档中出现的专有术语查阅"D:\VScodeProject\MapCode\Specialized Terminology.md"
-- aider项目简介查阅"D:\VScodeProject\MapCode\adier.md"
+- aider项目简介查阅"D:\VScodeProject\MapCode\aider.md"
 - MapCode项目中aider中被插入pico的功能模块部分查阅"D:\VScodeProject\MapCode\aider_module.md"
 - pico项目简介查阅"D:\VScodeProject\MapCode\pico.md"
 - pico架构和设计文档查阅D:\VScodeProject\MapCode\pico_origin\release\v3\learning
@@ -60,20 +56,21 @@ MapCode的价值在于把本地 Coding Agent 的文件选择过程，从“搜�
 ### 1. 总体原则
 
 1. MapCode 产品发布版本只使用 `v1`、`v2` 这类 major release 名称；`SPEC_v1_2.md`、`SPEC_v1_3.md`、`PRD_v1_1.md` 等 `v<major>_<revision>` 名称只表示对应产品版本下的文档或设计修订版本，不表示新的产品发布版本。
-2. 文档中提到的 SPEC、PRD、FuncFlow 等由于设计修订需要，在文件仓库中命名为 `SPEC_vx_x.md`、`PRD_vx_x.md`、`FuncFlow_vx_x.md` 等。如无明确说明，均默认调用当前活动产品版本对应的最新修订文档，**落后修订版本的文档不要再去读**。
+2. 文档中提到的 SPEC、PRD、FuncFlow 等由于设计修订需要，在文件仓库中命名为 `SPEC_vx_x.md`、`PRD_vx_x.md`、`FuncFlow_vx_x.md` 等。如无明确说明，均默认调用当前活动产品版本对应的最新修订文档，**落后修订版本的文档不要再去读**。文档中提到的SPEC、PRD、FuncFlow，全部在项目的根目录下寻找最新版本的文档。
 3. FuncFlow 文档解释模块流程、数据走向、事件顺序和用户可见行为，是流程解释文档。
-4. 项目级事实必须写入 `doc/`。
+4. 项目级长期事实必须写入根目录版本化事实文档或 `doc/`。当前活动事实文档固定为根目录 `PRD_v1_2.md`、`SPEC_v1_4.md`、`FuncFlow_v1_4.md`；不得创建 `doc/PRD.md`、`doc/SPEC.md`、`doc/FuncFlow.md` 作为第二套事实源。
 5. 简单问题、单文件小修改、快速查询可以不创建 `.planning/` 目录，其他符合 `planning-with-files` skill 描述的任务场景必须创建 `.planning/` 目录，禁止多个无关任务共用同一个 `.planning/` 目录。
 6. 不允许只依赖聊天上下文传递需求、设计、任务状态、错误原因或测试结果。
 7. 不允许在没有读取项目级文档的情况下直接实现代码。
-8. 不允许把临时调研结论直接当成正式设计；调研结论必须经过确认后才能沉淀到 `doc/SPEC.md`。
+8. 不允许把临时调研结论直接当成正式设计；调研结论必须经过确认后才能沉淀到根目录当前活动 SPEC（当前为 `SPEC_v1_4.md`）。
 9. 不允许为了通过测试而删除、跳过、注释掉失败逻辑；必须定位根因并记录处理过程。
 10. 每次会话结束前必须更新相关文档，例如（`.planning/<task>/task_plan.md` -> 如任务拆分、依赖、验证命令变化，沉淀到 `doc/tasks/{product-version}/{module-name}.md`）确保下一个会话可以从文件恢复上下文。
 11. 文档冲突时，采取 `SPEC > PRD > FuncFlow > doc/tasks/{product-version}/*.md > doc/tasks/{product-version}/progress.md > doc/tasks/progress_cross.md > .planning/<task>/task_plan.md > .planning/<task>/progress.md > .planning/<task>/findings.md` 的优先级。
-12. 如果 `.planning/` 或实现代码引入了 `doc/PRD.md` 中没有的行为，视为未批准范围。写入 `.planning/<task>/findings.md`，不默认实现，需要时回到 `doc/PRD.md` 更新需求，需求确认后再实现。
-13. 实现过程中发现 `doc/SPEC.md` 不合理，写入 `.planning/<task>/findings.md`，提出设计修正，更新 `doc/SPEC.md`，再继续实现，禁止在不更新 `doc/SPEC.md` 的情况下偷偷加功能或者实现另一套设计。
+12. 如果 `.planning/` 或实现代码引入了根目录当前活动 PRD（当前为 `PRD_v1_2.md`）中没有的行为，视为未批准范围。写入 `.planning/<task>/findings.md`，不默认实现，需要时回到当前活动 PRD 更新需求，需求确认后再实现。
+13. 实现过程中发现当前活动 SPEC 不合理，写入 `.planning/<task>/findings.md`，提出设计修正，用户审核同意后，更新根目录当前活动 SPEC，再继续实现，禁止在不更新当前活动 SPEC 的情况下偷偷加功能或者实现另一套设计。
 14. 每个文档的结构模版参考各自对应的 skill 内容要求来布局。
 15. 禁止在没有说明的情况下随意新增多个文档目录，除非已经明确规定这些目录的用途。
+16. 如果 `AGENT.md` 已存在，不得运行 `/init` 生成新的 `AGENTS.md`
 
 ---
 
@@ -100,9 +97,10 @@ MapCode的价值在于把本地 Coding Agent 的文件选择过程，从“搜�
 ```markdown
 project/
 ├── AGENT.md
+├── PRD_v*.md					#项目需求修订版；当前活动版本见文档导航
+├── SPEC_v*.md					#项目技术设计修订版；当前活动版本见文档导航
+├── FuncFlow_v*.md				#项目功能流程修订版；当前活动版本见文档导航
 ├── doc/
-│   ├── PRD.md						#项目需求
-│   ├── SPEC.md						#项目技术设计
 │   ├── prompt.md					#主agent启动prompt	
 │   └── tasks/
 │       ├── progress_cross.md          #跨版本状态和当前活动产品版本
@@ -125,8 +123,8 @@ project/
 ### 4.每次任务开始前准备
 
 1. 读取 AGENT.md
-2. 读取 doc/PRD.md
-3. 读取 doc/SPEC.md
+2. 读取根目录当前活动 PRD（当前为 `PRD_v1_2.md`）
+3. 读取根目录当前活动 SPEC（当前为 `SPEC_v1_4.md`）
 4. 读取 `doc/tasks/progress_cross.md`，确认当前活动产品版本
 5. 读取 `doc/tasks/{product-version}/progress.md`
 6. 读取对应 `doc/tasks/{product-version}/{module-name}.md`
@@ -136,8 +134,7 @@ project/
 10. 持续更新 findings.md 和 progress.md
 11. 任务完成后更新 `doc/tasks/{product-version}/progress.md`
 12. 产品版本状态或当前活动版本变化时更新 `doc/tasks/progress_cross.md`
-13. 如有稳定设计变化，更新 doc/SPEC.md
-14. 如有需求边界变化，更新 doc/PRD.md
+13. 如有稳定设计变化，提出更新 SPEC、PRD、FuncFlow的需求，并简要说明要如何更新，用户审核通过后才能修改。
 15. 输出会话结束交付
 
 ---
@@ -175,13 +172,13 @@ project/
     ↓
 产品版本状态变化时回写 doc/tasks/progress_cross.md
     ↓
-必要时回写 doc/SPEC.md、doc/PRD.md 或 doc/tasks/{product-version}/{module-name}.md
+必要时回写根目录当前活动 SPEC、PRD 或 doc/tasks/{product-version}/{module-name}.md
 ```
 
 具体规则：
 
-1. 项目目标、用户场景、功能边界变化：更新 `doc/PRD.md`。
-2. 架构、模块职责、接口、数据流、错误处理、测试策略变化：更新 `doc/SPEC.md`。
+1. 项目目标、用户场景、功能边界变化：更新根目录当前活动 PRD（当前为 `PRD_v1_2.md`）。
+2. 架构、模块职责、接口、数据流、错误处理、测试策略变化：更新根目录当前活动 SPEC（当前为 `SPEC_v1_4.md`）。
 3. 任务粒度、依赖关系、输入输出、验证命令变化：更新 `doc/tasks/{product-version}/{module-name}.md`。
 4. 任务完成状态变化：更新 `doc/tasks/{product-version}/progress.md`。
 5. 产品版本状态、当前活动版本或版本进度入口变化：更新 `doc/tasks/progress_cross.md`。
@@ -220,7 +217,7 @@ project/
 
 聊天记录不是长期项目记忆。
 
-任何重要信息都必须写入：`doc`
+任何重要信息都必须写入根目录版本化事实文档或 `doc/`。
 
 
 ## Git 与版本控制约束

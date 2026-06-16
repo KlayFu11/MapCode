@@ -7,26 +7,30 @@
 ## 当前项目阶段
 
 - `vibe-prac` 阶段三任务拆分已完成。
-- 实现必须从 `doc/tasks/v1/progress.md` 中第一个未完成且依赖已满足的任务开始。
-- 当前首个任务是 `V1-F0-01 校准根目录 Git baseline 与 .gitignore`。
+- 实现必须从 `doc/tasks/v1/progress.md` 中优先选择依赖已满足的 P0 未完成任务；同优先级按进度表顺序执行，没有可执行 P0 时再执行 P1。
+- 当前首个任务以 `doc/tasks/v1/progress.md` 为准；完成 `V1-F0-05`、`V1-F0-06`、`V1-F0-07`、`V1-F0-08` 后应进入 `V1-F1-01 创建 MapEngine 配置和版本常量`。
+
+## 三段验收里程碑
+
+1. 第一阶段可展示成果：`F0-F3`。离线 MapEngine 能运行并生成 broad/focused map，不要求 Pico runtime 接入。
+2. 第二阶段核心 MVP：`F4-F6`。Pico runtime、MapEngine、prompt injection 和 Branch A 跑通，形成可讲的 MapCode v1 垂直切片，不要求 Branch B selector 或 retrieval eval。
+3. 第三阶段完整 v1：`F7-F9`。Branch B selector、完整 evidence、retrieval eval、README/demo 完成；`V1-F8-07` 是核心证据链门禁，`V1-F8-05`/`V1-F8-06` 是 P1 release polish，不阻塞 `V1-F8-07` 或 `V1-F9-01`，但阻塞最终 `V1-F9-09`。
 
 ## 必读文件
 
 每次实现任务开始前必须读取：
 
 1. `AGENT.md`，或阶段 0 统一后的唯一规则入口。
-2. 阶段 0 文档迁移前：
-- `PRD_v1_2.md`
+2. 根目录当前活动事实文档：
+   - `PRD_v1_2.md`
    - `SPEC_v1_4.md`
    - `FuncFlow_v1_4.md`
-3. 阶段 0 文档迁移后：
-   - `doc/PRD.md`
-   - `doc/SPEC.md`
-   - `doc/FuncFlow.md`
-4. `doc/tasks/progress_cross.md`
-5. `doc/tasks/v1/progress.md`
-6. 当前任务所属的 `doc/tasks/v1/<module>.md`
-7. 与当前任务直接相关的真实 Pico/Aider 源码接缝。
+3. `doc/tasks/progress_cross.md`
+4. `doc/tasks/v1/progress.md`
+5. 当前任务所属的 `doc/tasks/v1/<module>.md`
+6. 与当前任务直接相关的真实 Pico/Aider 源码接缝。
+
+PRD、SPEC、FuncFlow 始终直接维护在项目根目录，以版本化文件名控制修订；不得创建或切换到 `doc/PRD.md`、`doc/SPEC.md`、`doc/FuncFlow.md`。
 
 ## 事实优先级
 
@@ -61,7 +65,7 @@ SPEC > PRD > FuncFlow > doc/tasks > 当前 .planning > 聊天记录
 
 ## 执行顺序
 
-1. 从 `doc/tasks/v1/progress.md` 选择第一个未完成且依赖已满足的任务。
+1. 从 `doc/tasks/v1/progress.md` 选择依赖已满足的最高优先级未完成任务：先 P0，同优先级按进度表顺序，没有可执行 P0 时再执行 P1。
 2. 创建独立 `.planning/<date>-<task-slug>/`：
    - `task_plan.md`
    - `findings.md`

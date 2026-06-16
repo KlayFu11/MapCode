@@ -2,12 +2,11 @@
 
 ## 模块目标
 
-完成 MapCode v1 的 trace、repo-map artifact、map evidence artifact、report、CLI/TUI 展示，以及 path-ident、focus/path personalization、multiplier、selector catalog、请求预算、base prompt reduction、omission 和超预算降级证据一致性。
+完成 MapCode v1 的核心 trace、repo-map artifact、map evidence artifact、report，以及 path-ident、focus/path personalization、multiplier、selector catalog、请求预算、base prompt reduction、omission 和超预算降级证据一致性；CLI/REPL/TUI 展示作为 P1 release polish，不阻塞核心证据链验收。
 
 ## 相关设计
 
-- 当前迁移前来源：`SPEC_v1_4.md` 第十三、十四、十六、十七章。
-- 迁移后来源：`doc/SPEC.md`。
+- 当前活动来源：`SPEC_v1_4.md` 第十三、十四、十六、十七章。
 
 ## 模块依赖
 
@@ -18,6 +17,7 @@
 - **允许修改**：runtime trace payload、MapContext evidence 组装、report、reporter 消费接缝、CLI/REPL/TUI 与对应测试。
 - **禁止修改**：MapEngine 算法、Branch 选择规则、ContextManager 新注入行为。
 - **模块原则**：`map-evidence-001.json` 是完整检索与控制事实源；trace/report 是摘要；terminal 是已有 evidence 的投影。
+- **阶段门禁原则**：`V1-F8-07` 是 P0 核心证据链门禁；`V1-F8-05`、`V1-F8-06` 不阻塞 `V1-F9-01`，但必须在最终 release close-out `V1-F9-09` 前完成。
 
 ## 任务列表
 
@@ -121,16 +121,16 @@
 ### V1-F8-07：增加证据一致性、redaction 和降级测试
 
 - **优先级**：P0
-- **依赖**：V1-F8-06
-- **输入**：当前最新 SPEC/PRD/FuncFlow、阶段 8 全部证据面
-- **输出**：完整证据链 acceptance suite
-- **允许修改路径**：evidence/runtime/report/CLI/TUI acceptance tests
+- **依赖**：V1-F8-04
+- **输入**：当前最新 SPEC/PRD/FuncFlow、阶段 8 P0 核心证据面
+- **输出**：核心证据链 acceptance suite
+- **允许修改路径**：evidence/runtime/report acceptance tests
 - **禁止修改边界**：不得通过放宽断言隐藏证据不一致
 - **步骤**：覆盖文件/symbol/path-ident Branch A、三无 Branch B、path-ident 原始大小写与全量 hit-files、图节点过滤、focus/path personalization 隔离、path personalization 无 outbound boost、multiplier/reason codes、文件级 `prompt_path_ident_hits`、catalog、完整 selector request 摘要、`visible_paths`、隐藏 candidate 拒绝、selector_request_over_budget、base prompt reduction、repo map omission、最终请求超预算、artifact failure、redaction 和各层一致性；验证 evidence 不把 `candidate_paths` 混同为允许返回的可见路径。
 - **验证命令**：
   ```powershell
-  .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context_evidence_acceptance.py pico\tests\test_runtime_evidence_acceptance.py pico\tests\test_tui.py -q
+  .\.venv\Scripts\python.exe -m pytest pico\tests\test_map_context_evidence_acceptance.py pico\tests\test_runtime_evidence_acceptance.py pico\tests\test_run_store.py -q
   .\.venv\Scripts\python.exe -m ruff check pico\pico pico\tests
   ```
-- **完成标准**：阶段 8 门禁通过；path-ident 与 multiplier 证据可从 trace/artifact/report 一致复盘；完整双角色 selector request 摘要与可见路径校验事实一致。
+- **完成标准**：阶段 8 P0 核心门禁通过；path-ident 与 multiplier 证据可从 trace/artifact/report 一致复盘；完整双角色 selector request 摘要与可见路径校验事实一致；CLI/TUI 展示不属于本任务阻塞项。
 - **回退条件**：任何层产生其他层无法证明的新事实。

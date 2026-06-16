@@ -6,12 +6,11 @@
 
 ## 相关设计
 
-- 当前迁移前来源：`PRD_v1_2.md` 评测方案、`SPEC_v1_4.md` 17.6、18、19。
-- 迁移后来源：`doc/PRD.md`、`doc/SPEC.md`。
+- 当前活动来源：`PRD_v1_2.md` 评测方案、`SPEC_v1_4.md` 17.6、18、19。
 
 ## 模块依赖
 
-- 阶段 8 全部门禁通过。
+- `V1-F8-07` P0 核心证据链门禁通过；`V1-F8-05`、`V1-F8-06` 不阻塞 `V1-F9-01`，但必须在 `V1-F9-09` 最终 release close-out 前完成。
 
 ## 模块通用边界
 
@@ -154,12 +153,12 @@
 ### V1-F9-09：更新 README、配置、演示步骤和项目总进度
 
 - **优先级**：P0
-- **依赖**：V1-F9-08
-- **输入**：当前最新 SPEC/PRD/FuncFlow、离线/真实验收记录
+- **依赖**：V1-F9-08/V1-F8-06
+- **输入**：当前最新 SPEC/PRD/FuncFlow、离线/真实验收记录、CLI/REPL/TUI 展示验收记录
 - **输出**：最终用户文档、预算配置、演示说明、全部完成进度
 - **允许修改路径**：README、配置示例、doc/、项目总进度
 - **禁止修改边界**：不得声明未经验证的模型窗口或隐藏失败/限制
-- **步骤**：记录启用方式、ModelRequestBudget CLI/TOML、固定 map budget、path-ident Branch A、focus/path personalization、multiplier evidence、三无 Branch B、catalog、artifact、eval、失败降级和后续方向；完成最终门禁并更新总账。
+- **步骤**：记录启用方式、ModelRequestBudget CLI/TOML、固定 map budget、path-ident Branch A、focus/path personalization、multiplier evidence、三无 Branch B、catalog、artifact、CLI/REPL/TUI 展示、eval、失败降级和后续方向；完成最终门禁并更新总账。
 - **验证命令**：
   ```powershell
   Select-String -Path .\pico\README.md,.\doc\*.md -Pattern "ModelRequestBudget|32768|1024|4096|8192|SelectorCandidateCatalog|selector_request_over_budget"
