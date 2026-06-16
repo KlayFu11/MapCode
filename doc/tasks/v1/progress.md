@@ -5,7 +5,7 @@
 
 ## 当前阶段
 
-- `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐，等待进入阶段四实现。
+- `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线正在执行。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
 - 首个可执行任务：`V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt`
 
@@ -128,13 +128,19 @@
 
 ## 当前阻塞
 
-- 阻塞项：无。
-- 影响范围：V1-F0-05、V1-F0-06 的依赖门禁已满足。
-- 需要决策：无。
+- 阻塞项：`V1-F0-06` Windows baseline 未全绿；从 `pico/` 目录运行完整测试结果为 `266 passed, 20 failed, 2 skipped, 6 warnings`。
+- 影响范围：`V1-F0-05` 至 `V1-F0-08` 已完成本轮治理、环境、实验和依赖声明施工，但在用户审查通过并 commit 前不勾选；`V1-F1-01` 尚不得启动。
+- 需要决策：用户计划迁移到 macOS 继续开发；迁移后应按 `doc/mac-migration-handoff.md` 重跑 `V1-F0-06` 和 `V1-F0-08` 验证。若 macOS baseline 通过，可把 Windows 失败记录为兼容性已知问题；若 macOS 也失败，先修 baseline 再进入 `V1-F1-01`。
 
 ## 最近完成
 
 - 日期：2026-06-16
 - 完成任务：`V1-F0-02 统一规则入口、文档导航和事实优先级`；`V1-F0-03 校准根目录版本化事实文档治理`；`V1-F0-04 记录 Pico/Aider 基线来源、只读用途和许可证边界`
 - 验证命令：`Select-String -Path .\AGENT*.md -Pattern "SPEC > PRD > FuncFlow|pico行数门禁|功能完整接入与职责正确"`；`Get-ChildItem . -File -Filter "PRD_v*.md"`；`Get-ChildItem . -File -Filter "SPEC_v*.md"`；`Get-ChildItem . -File -Filter "FuncFlow_v*.md"`；`Select-String -Path .\AGENT*.md,.\doc\tasks\v1\*.md,.\doc\prompt.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md|doc/PRD.md|doc/SPEC.md|doc/FuncFlow.md"`；`Select-String -Path .\doc\baselines.md -Pattern "aider|pico_origin|Apache|import aider"`；`git status --short`；`git check-ignore -v aider pico_origin .planning PRD SPEC FuncFlow`；`git ls-files aider pico_origin .planning PRD SPEC FuncFlow doc`；`git diff --check`
-- 结果：验证通过；文档治理变更已准备；等待用户审查和 commit。
+- 结果：验证通过；用户已手动提交，当前 HEAD 为 `88969af docs(V1-F0-02,V1-F0-03,V1-F0-04): align foundation governance docs`。
+
+## 最近执行
+
+- 日期：2026-06-16
+- 执行任务：`V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt`；`V1-F0-06 创建根目录 .venv 并验证 Pico baseline`；`V1-F0-07 完成 MapEngine 依赖兼容性实验`；`V1-F0-08 增加正式运行依赖和许可证说明`
+- 结果：文档治理、`.venv` 创建、依赖实验、正式依赖声明和许可证说明已完成；Pico baseline 在 Windows 下未全绿；已新增 `doc/mac-migration-handoff.md` 记录迁移交接与 macOS 复验计划；未 commit，未勾选。

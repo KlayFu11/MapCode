@@ -36,10 +36,16 @@ FuncFlow/
 !PRD_v1_2.md
 !FuncFlow_v1_4.md
 !SPEC_v1_4.md
+!experiment_map_engine_dependencies.py
 
 # Keep selected source directories
 !pico/
 !pico/**
+pico/**/__pycache__/
+pico/**/*.py[cod]
+pico/*.egg-info/
+pico/.pytest_cache/
+pico/readme_intro_locked/
 
 
 

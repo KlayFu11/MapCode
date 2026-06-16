@@ -122,7 +122,7 @@
   3. 检查执行 Prompt 能直接启动 V1-F0-06。
 - **验证命令**：
   ```powershell
-Select-String -Path .\doc\tasks\*.md,.\doc\prompt.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md"
+  Select-String -Path .\doc\tasks\v1\*.md,.\doc\prompt.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md"
   ```
 - **完成标准**：活动任务统一引用根目录当前版本，且不引用 `doc/` 下的无版本 PRD/SPEC/FuncFlow。
 - **回退条件**：任务依赖或进度总账出现不一致。
@@ -177,7 +177,7 @@ Select-String -Path .\doc\tasks\*.md,.\doc\prompt.md -Pattern "PRD_v1_2.md|SPEC_
 - **禁止修改边界**：不得加入未经实验验证的依赖
 - **步骤**：
   1. 添加 v1 所需最小运行依赖。
-  2. 记录 query 或移植代码的来源和修改说明。
+  2. 记录 query、算法或移植代码的来源、许可证归属和修改说明。
   3. 重新安装并运行 baseline。
 - **验证命令**：
   ```powershell

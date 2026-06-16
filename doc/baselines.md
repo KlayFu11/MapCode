@@ -32,6 +32,23 @@ Forbidden use in MapCode v1:
 - Do not make `aider/` a runtime dependency.
 - Do not track `aider/` in the MapCode Git index.
 
+## MapEngine Dependency Boundary
+
+`V1-F0-07` verified the following third-party dependency set in a standalone experiment before it was added to Pico runtime dependencies:
+
+| Dependency | Verified purpose | Source alignment |
+|---|---|---|
+| `grep-ast` | `TreeContext` structure rendering and Python filename language detection. | Used by `aider/aider/repomap.py`. |
+| `tree-sitter` | Query execution for Python definition/reference captures. | Used by `aider/aider/repomap.py`. |
+| `tree-sitter-language-pack` | Python parser/language provider and query compatibility baseline. | Aider ships language-pack query files and constrains this package. |
+| `networkx` | PageRank and Personalized PageRank file graph ranking. | Used by Aider RepoMap ranking. |
+| `scipy` | Numeric backend required by `networkx.pagerank()` in the verified dependency version. | Aider requirements note that RepoMap needs NetworkX plus SciPy. |
+| `tzdata` | Windows baseline support for `ZoneInfo("Asia/Shanghai")`. | Required for Pico baseline tests on Windows when system tzdata is unavailable. |
+
+The root `experiment_map_engine_dependencies.py` validates these APIs without importing Pico runtime code or `aider.*`.
+
+If MapCode later adapts Aider query text or implementation details, the copied material must be MapCode-owned code, must preserve Apache License 2.0 attribution, and must describe local modifications. Algorithmic ideas alone do not justify importing `aider.*` or copying `RepoMap` wholesale.
+
 ## Pico Baseline Boundary
 
 `pico_origin/` is a local read-only source baseline. It is used to understand what changed from the original Pico runtime and to compare architecture, tests, docs, and runtime behavior.
