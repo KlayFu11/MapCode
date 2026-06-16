@@ -53,11 +53,8 @@ pico/readme_intro_locked/
 
 # Keep project docs
 !doc/
-!doc/**
-<<<<<<< HEAD
+!doc/**s
 
 
 .DS_Store
 **/.DS_Store
-=======
->>>>>>> origin/winfeat/dev
