@@ -46,3 +46,7 @@ PRD/*
 # Keep project docs
 !doc/
 !doc/**
+
+
+.DS_Store
+**/.DS_Store
