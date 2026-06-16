@@ -112,7 +112,7 @@
 - [ ] V1-F8-04 report 增加 MapContext、预算与模型调用摘要 (P0, 依赖 V1-F8-03)
 - [ ] V1-F8-05 CLI/REPL 展示 reporter 事件 (P1, 依赖 V1-F8-04)
 - [ ] V1-F8-06 TUI 展示 reporter 事件 (P1, 依赖 V1-F8-05)
-- [ ] V1-F8-07 增加证据一致性、redaction 和降级测试 (P0, 依赖 V1-F8-06)
+- [ ] V1-F8-07 增加证据一致性、redaction 和降级测试 (P0, 依赖 V1-F8-04)
 
 ## 阶段 9：Retrieval Eval 与发布验收
 
@@ -124,7 +124,7 @@
 - [ ] V1-F9-06 运行完整离线回归和架构边界检查 (P0, 依赖 V1-F9-05)
 - [ ] V1-F9-07 使用真实 provider 演示 Branch A 与 path-ident-only (P0, 依赖 V1-F9-06)
 - [ ] V1-F9-08 使用真实 provider 演示 Branch B 和预算降级 (P0, 依赖 V1-F9-07)
-- [ ] V1-F9-09 更新 README、配置、演示步骤和项目总进度 (P0, 依赖 V1-F9-08)
+- [ ] V1-F9-09 更新 README、配置、演示步骤和项目总进度 (P0, 依赖 V1-F9-08/V1-F8-06)
 
 ## 当前阻塞
 

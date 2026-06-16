@@ -7,8 +7,14 @@
 ## 当前项目阶段
 
 - `vibe-prac` 阶段三任务拆分已完成。
-- 实现必须从 `doc/tasks/v1/progress.md` 中第一个未完成且依赖已满足的任务开始。
+- 实现必须从 `doc/tasks/v1/progress.md` 中优先选择依赖已满足的 P0 未完成任务；同优先级按进度表顺序执行，没有可执行 P0 时再执行 P1。
 - 当前首个任务是 `V1-F0-01 校准根目录 Git baseline 与 .gitignore`。
+
+## 三段验收里程碑
+
+1. 第一阶段可展示成果：`F0-F3`。离线 MapEngine 能运行并生成 broad/focused map，不要求 Pico runtime 接入。
+2. 第二阶段核心 MVP：`F4-F6`。Pico runtime、MapEngine、prompt injection 和 Branch A 跑通，形成可讲的 MapCode v1 垂直切片，不要求 Branch B selector 或 retrieval eval。
+3. 第三阶段完整 v1：`F7-F9`。Branch B selector、完整 evidence、retrieval eval、README/demo 完成；`V1-F8-07` 是核心证据链门禁，`V1-F8-05`/`V1-F8-06` 是 P1 release polish，不阻塞 `V1-F8-07` 或 `V1-F9-01`，但阻塞最终 `V1-F9-09`。
 
 ## 必读文件
 
@@ -59,7 +65,7 @@ SPEC > PRD > FuncFlow > doc/tasks > 当前 .planning > 聊天记录
 
 ## 执行顺序
 
-1. 从 `doc/tasks/v1/progress.md` 选择第一个未完成且依赖已满足的任务。
+1. 从 `doc/tasks/v1/progress.md` 选择依赖已满足的最高优先级未完成任务：先 P0，同优先级按进度表顺序，没有可执行 P0 时再执行 P1。
 2. 创建独立 `.planning/<date>-<task-slug>/`：
    - `task_plan.md`
    - `findings.md`
