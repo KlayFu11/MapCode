@@ -8,7 +8,7 @@
 
 - `vibe-prac` 阶段三任务拆分已完成。
 - 实现必须从 `doc/tasks/v1/progress.md` 中优先选择依赖已满足的 P0 未完成任务；同优先级按进度表顺序执行，没有可执行 P0 时再执行 P1。
-- 当前首个任务是 `V1-F0-01 校准根目录 Git baseline 与 .gitignore`。
+- 当前首个任务以 `doc/tasks/v1/progress.md` 为准；完成 `V1-F0-02`、`V1-F0-03`、`V1-F0-04` 后应进入 `V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt`。
 
 ## 三段验收里程碑
 

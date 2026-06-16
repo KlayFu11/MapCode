@@ -7,14 +7,14 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐，等待进入阶段四实现。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 首个可执行任务：`V1-F0-01 校准根目录 Git baseline 与 .gitignore`
+- 首个可执行任务：`V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt`
 
 ## 阶段 0：固定施工地基
 
-- [ ] V1-F0-01 校准根目录 Git baseline 与 `.gitignore` (P0, 无依赖)
-- [ ] V1-F0-02 统一规则入口、文档导航和事实优先级 (P0, 依赖 V1-F0-01)
-- [ ] V1-F0-03 校准根目录版本化事实文档治理 (P0, 依赖 V1-F0-02)
-- [ ] V1-F0-04 记录 Pico/Aider 基线来源、只读用途和许可证边界 (P0, 依赖 V1-F0-03)
+- [x] V1-F0-01 校准根目录 Git baseline 与 `.gitignore` (P0, 无依赖)
+- [x] V1-F0-02 统一规则入口、文档导航和事实优先级 (P0, 依赖 V1-F0-01)
+- [x] V1-F0-03 校准根目录版本化事实文档治理 (P0, 依赖 V1-F0-02)
+- [x] V1-F0-04 记录 Pico/Aider 基线来源、只读用途和许可证边界 (P0, 依赖 V1-F0-03)
 - [ ] V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt (P0, 依赖 V1-F0-03)
 - [ ] V1-F0-06 创建根目录 `.venv` 并验证 Pico baseline (P0, 依赖 V1-F0-01)
 - [ ] V1-F0-07 完成 MapEngine 依赖兼容性实验 (P0, 依赖 V1-F0-06)
@@ -128,13 +128,13 @@
 
 ## 当前阻塞
 
-- 阻塞项：无设计阻塞；根目录 Git 已初始化，但 baseline 尚未满足 V1-F0-01 门禁。
-- 影响范围：所有实现阶段必须等待阶段 0 门禁。
+- 阻塞项：无。
+- 影响范围：V1-F0-05、V1-F0-06 的依赖门禁已满足。
 - 需要决策：无。
 
 ## 最近完成
 
-- 日期：2026-06-15
-- 完成任务：依据最新 `SPEC_v1_4.md`、`FuncFlow_v1_4.md` 对齐 path_ident 项目施工计划
-- 验证命令：计划一致性、依赖、字段、覆盖、旧语义与只读边界检查
-- 结果：三处均为 87 个唯一任务且差异为 0；阶段分布为 `8/10/7/11/10/9/9/7/7/9`；字段、依赖、旧语义、path-ident 核心覆盖和允许修改路径违规均为 0。
+- 日期：2026-06-16
+- 完成任务：`V1-F0-02 统一规则入口、文档导航和事实优先级`；`V1-F0-03 校准根目录版本化事实文档治理`；`V1-F0-04 记录 Pico/Aider 基线来源、只读用途和许可证边界`
+- 验证命令：`Select-String -Path .\AGENT*.md -Pattern "SPEC > PRD > FuncFlow|pico行数门禁|功能完整接入与职责正确"`；`Get-ChildItem . -File -Filter "PRD_v*.md"`；`Get-ChildItem . -File -Filter "SPEC_v*.md"`；`Get-ChildItem . -File -Filter "FuncFlow_v*.md"`；`Select-String -Path .\AGENT*.md,.\doc\tasks\v1\*.md,.\doc\prompt.md -Pattern "PRD_v1_2.md|SPEC_v1_4.md|FuncFlow_v1_4.md|doc/PRD.md|doc/SPEC.md|doc/FuncFlow.md"`；`Select-String -Path .\doc\baselines.md -Pattern "aider|pico_origin|Apache|import aider"`；`git status --short`；`git check-ignore -v aider pico_origin .planning PRD SPEC FuncFlow`；`git ls-files aider pico_origin .planning PRD SPEC FuncFlow doc`；`git diff --check`
+- 结果：验证通过；文档治理变更已准备；等待用户审查和 commit。

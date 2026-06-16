@@ -32,10 +32,10 @@ MapCode 的核心目标不是简单扩大上下文窗口，也不是让模型盲
 ## 文档导航
 
 - MapCode v1 PRD查阅"D:\VScodeProject\MapCode\PRD_v1_2.md"
-- MapCode v1 SEPC查阅"D:\VScodeProject\MapCode\SPEC_v1_4.md"
+- MapCode v1 SPEC查阅"D:\VScodeProject\MapCode\SPEC_v1_4.md"
 - MapCode v1 功能流程说明查阅"D:\VScodeProject\MapCode\FuncFlow_v1_4.md"
 - 项目各类文档中出现的专有术语查阅"D:\VScodeProject\MapCode\Specialized Terminology.md"
-- aider项目简介查阅"D:\VScodeProject\MapCode\adier.md"
+- aider项目简介查阅"D:\VScodeProject\MapCode\aider.md"
 - MapCode项目中aider中被插入pico的功能模块部分查阅"D:\VScodeProject\MapCode\aider_module.md"
 - pico项目简介查阅"D:\VScodeProject\MapCode\pico.md"
 - pico架构和设计文档查阅D:\VScodeProject\MapCode\pico_origin\release\v3\learning
@@ -58,16 +58,16 @@ MapCode 的核心目标不是简单扩大上下文窗口，也不是让模型盲
 1. MapCode 产品发布版本只使用 `v1`、`v2` 这类 major release 名称；`SPEC_v1_2.md`、`SPEC_v1_3.md`、`PRD_v1_1.md` 等 `v<major>_<revision>` 名称只表示对应产品版本下的文档或设计修订版本，不表示新的产品发布版本。
 2. 文档中提到的 SPEC、PRD、FuncFlow 等由于设计修订需要，在文件仓库中命名为 `SPEC_vx_x.md`、`PRD_vx_x.md`、`FuncFlow_vx_x.md` 等。如无明确说明，均默认调用当前活动产品版本对应的最新修订文档，**落后修订版本的文档不要再去读**。文档中提到的SPEC、PRD、FuncFlow，全部在项目的根目录下寻找最新版本的文档。
 3. FuncFlow 文档解释模块流程、数据走向、事件顺序和用户可见行为，是流程解释文档。
-4. 项目级事实必须写入 `doc/`。
+4. 项目级长期事实必须写入根目录版本化事实文档或 `doc/`。当前活动事实文档固定为根目录 `PRD_v1_2.md`、`SPEC_v1_4.md`、`FuncFlow_v1_4.md`；不得创建 `doc/PRD.md`、`doc/SPEC.md`、`doc/FuncFlow.md` 作为第二套事实源。
 5. 简单问题、单文件小修改、快速查询可以不创建 `.planning/` 目录，其他符合 `planning-with-files` skill 描述的任务场景必须创建 `.planning/` 目录，禁止多个无关任务共用同一个 `.planning/` 目录。
 6. 不允许只依赖聊天上下文传递需求、设计、任务状态、错误原因或测试结果。
 7. 不允许在没有读取项目级文档的情况下直接实现代码。
-8. 不允许把临时调研结论直接当成正式设计；调研结论必须经过确认后才能沉淀到 `doc/SPEC.md`。
+8. 不允许把临时调研结论直接当成正式设计；调研结论必须经过确认后才能沉淀到根目录当前活动 SPEC（当前为 `SPEC_v1_4.md`）。
 9. 不允许为了通过测试而删除、跳过、注释掉失败逻辑；必须定位根因并记录处理过程。
 10. 每次会话结束前必须更新相关文档，例如（`.planning/<task>/task_plan.md` -> 如任务拆分、依赖、验证命令变化，沉淀到 `doc/tasks/{product-version}/{module-name}.md`）确保下一个会话可以从文件恢复上下文。
 11. 文档冲突时，采取 `SPEC > PRD > FuncFlow > doc/tasks/{product-version}/*.md > doc/tasks/{product-version}/progress.md > doc/tasks/progress_cross.md > .planning/<task>/task_plan.md > .planning/<task>/progress.md > .planning/<task>/findings.md` 的优先级。
-12. 如果 `.planning/` 或实现代码引入了 `doc/PRD.md` 中没有的行为，视为未批准范围。写入 `.planning/<task>/findings.md`，不默认实现，需要时回到 `doc/PRD.md` 更新需求，需求确认后再实现。
-13. 实现过程中发现 `SPEC` 不合理，写入 `.planning/<task>/findings.md`，提出设计修正，用户审核同意后，更新 `SPEC`，再继续实现，禁止在不更新 `SPEC.md` 的情况下偷偷加功能或者实现另一套设计。
+12. 如果 `.planning/` 或实现代码引入了根目录当前活动 PRD（当前为 `PRD_v1_2.md`）中没有的行为，视为未批准范围。写入 `.planning/<task>/findings.md`，不默认实现，需要时回到当前活动 PRD 更新需求，需求确认后再实现。
+13. 实现过程中发现当前活动 SPEC 不合理，写入 `.planning/<task>/findings.md`，提出设计修正，用户审核同意后，更新根目录当前活动 SPEC，再继续实现，禁止在不更新当前活动 SPEC 的情况下偷偷加功能或者实现另一套设计。
 14. 每个文档的结构模版参考各自对应的 skill 内容要求来布局。
 15. 禁止在没有说明的情况下随意新增多个文档目录，除非已经明确规定这些目录的用途。
 16. 如果 `AGENT.md` 已存在，不得运行 `/init` 生成新的 `AGENTS.md`
@@ -97,9 +97,9 @@ MapCode 的核心目标不是简单扩大上下文窗口，也不是让模型盲
 ```markdown
 project/
 ├── AGENT.md
-├── PRD.md						#项目需求
-├── SPEC.md						#项目技术设计
-├── FuncFlow					#项目功能流程
+├── PRD_v*.md					#项目需求修订版；当前活动版本见文档导航
+├── SPEC_v*.md					#项目技术设计修订版；当前活动版本见文档导航
+├── FuncFlow_v*.md				#项目功能流程修订版；当前活动版本见文档导航
 ├── doc/
 │   ├── prompt.md					#主agent启动prompt	
 │   └── tasks/
@@ -123,8 +123,8 @@ project/
 ### 4.每次任务开始前准备
 
 1. 读取 AGENT.md
-2. 读取 PRD
-3. 读取 SPEC
+2. 读取根目录当前活动 PRD（当前为 `PRD_v1_2.md`）
+3. 读取根目录当前活动 SPEC（当前为 `SPEC_v1_4.md`）
 4. 读取 `doc/tasks/progress_cross.md`，确认当前活动产品版本
 5. 读取 `doc/tasks/{product-version}/progress.md`
 6. 读取对应 `doc/tasks/{product-version}/{module-name}.md`
@@ -172,13 +172,13 @@ project/
     ↓
 产品版本状态变化时回写 doc/tasks/progress_cross.md
     ↓
-必要时回写 SPEC、PRD 或 doc/tasks/{product-version}/{module-name}.md
+必要时回写根目录当前活动 SPEC、PRD 或 doc/tasks/{product-version}/{module-name}.md
 ```
 
 具体规则：
 
-1. 项目目标、用户场景、功能边界变化：更新 `PRD.md`。
-2. 架构、模块职责、接口、数据流、错误处理、测试策略变化：更新 `SPEC.md`。
+1. 项目目标、用户场景、功能边界变化：更新根目录当前活动 PRD（当前为 `PRD_v1_2.md`）。
+2. 架构、模块职责、接口、数据流、错误处理、测试策略变化：更新根目录当前活动 SPEC（当前为 `SPEC_v1_4.md`）。
 3. 任务粒度、依赖关系、输入输出、验证命令变化：更新 `doc/tasks/{product-version}/{module-name}.md`。
 4. 任务完成状态变化：更新 `doc/tasks/{product-version}/progress.md`。
 5. 产品版本状态、当前活动版本或版本进度入口变化：更新 `doc/tasks/progress_cross.md`。
@@ -217,7 +217,7 @@ project/
 
 聊天记录不是长期项目记忆。
 
-任何重要信息都必须写入：`doc`
+任何重要信息都必须写入根目录版本化事实文档或 `doc/`。
 
 
 ## Git 与版本控制约束
