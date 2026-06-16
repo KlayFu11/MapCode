@@ -19,6 +19,7 @@ MapCode 的核心目标不是简单扩大上下文窗口，也不是让模型盲
 
 ## 基本约定
 
+- 若检测到系统为 MAC, 则所有文档中的`D:\VScodeProject\MapCode`按照`/Users/quqibing/Code/MapCode`来检索、加载、读取。
 - MapCode 的工程演进必须以 Pico 现有 runtime 作为唯一代码底座。所有从 Aider 抽象出的 RepoMap / MapEngine 能力，都必须作为 Pico 现有功能模块、接口、数据流和执行链路的增强能力接入，而不是另起一个新项目、重建一套 runtime、复制拼接 Pico/Aider 的零散代码片段。除非明确要求重构，否则所有功能实现都应优先在 `pico/`，Pico 当前目录结构、CLI 入口、WorkspaceContext、PromptBuilder、ToolRegistry、Approval、History、Trace / Report 等既有模块上做增量修改。
 - 所有 MapCode 产品功能源码，必须基于 `pico/`现有结构增量开发。禁止在项目根目录新建另一套运行时代码。根目录只允许维护项目治理文档、任务计划、环境、实验和必要工程配置。`aider/` 与 `pico_origin/` 只读。
 - 默认使用中文解释；代码、命令、路径、API 字段和变量名保持 English。

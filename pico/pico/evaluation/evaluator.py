@@ -3,6 +3,7 @@ import json
 import locale as locale_module
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -128,9 +129,12 @@ def _git_value(args, fallback="", cwd=None):
 
 def _current_locale():
     try:
-        return locale_module.setlocale(locale_module.LC_CTYPE)
+        current_locale = locale_module.setlocale(locale_module.LC_CTYPE)
     except Exception:
-        return locale_module.getdefaultlocale()[0] or "C"
+        current_locale = locale_module.getdefaultlocale()[0] or "C"
+    if current_locale == "C" and sys.flags.utf8_mode:
+        return "C.UTF-8"
+    return current_locale
 
 
 def _now_in_timezone(timezone_name):

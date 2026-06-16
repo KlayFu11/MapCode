@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -22,6 +23,10 @@ from pico.providers import AnthropicCompatibleModelClient, OpenAICompatibleModel
 SUMMARY_JSON = "gate8-real-session-acceptance.json"
 SUMMARY_MARKDOWN = "gate8-real-session-acceptance.md"
 LIVE_ENV_FLAG = "PICO_ACCEPTANCE_LIVE"
+
+
+def _python_pytest_command():
+    return subprocess.list2cmdline([sys.executable, "-m", "pytest", "-q"])
 
 
 def run_acceptance(output_dir, include_live=None):
@@ -121,7 +126,7 @@ def _scenario_bugfix_pytest(output_dir, workspace):
             '<tool>{"name":"read_file","args":{"path":"tests/test_calculator.py","start":1,"end":20}}</tool>',
             '<tool>{"name":"read_file","args":{"path":"src/calculator.py","start":1,"end":20}}</tool>',
             '<tool name="patch_file" path="src/calculator.py"><old_text>return a - b</old_text><new_text>return a + b</new_text></tool>',
-            '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":60}}</tool>',
+            f"<tool>{json.dumps({'name': 'run_shell', 'args': {'command': _python_pytest_command(), 'timeout': 60}})}</tool>",
             "<final>Bug fixed and tests pass.</final>",
         ],
         max_steps=6,
