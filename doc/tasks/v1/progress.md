@@ -5,9 +5,9 @@
 
 ## 当前阶段
 
-- `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线正在执行。
+- `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 首个可执行任务：`V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt`
+- 下一可执行任务：`V1-F1-01 创建 MapEngine 配置和版本常量`（待用户明确启动）
 
 ## 阶段 0：固定施工地基
 
@@ -15,10 +15,10 @@
 - [x] V1-F0-02 统一规则入口、文档导航和事实优先级 (P0, 依赖 V1-F0-01)
 - [x] V1-F0-03 校准根目录版本化事实文档治理 (P0, 依赖 V1-F0-02)
 - [x] V1-F0-04 记录 Pico/Aider 基线来源、只读用途和许可证边界 (P0, 依赖 V1-F0-03)
-- [ ] V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt (P0, 依赖 V1-F0-03)
-- [ ] V1-F0-06 创建根目录 `.venv` 并验证 Pico baseline (P0, 依赖 V1-F0-01)
-- [ ] V1-F0-07 完成 MapEngine 依赖兼容性实验 (P0, 依赖 V1-F0-06)
-- [ ] V1-F0-08 增加正式运行依赖和许可证说明 (P0, 依赖 V1-F0-07)
+- [x] V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt (P0, 依赖 V1-F0-03)
+- [x] V1-F0-06 创建根目录 `.venv` 并验证 Pico baseline (P0, 依赖 V1-F0-01)
+- [x] V1-F0-07 完成 MapEngine 依赖兼容性实验 (P0, 依赖 V1-F0-06)
+- [x] V1-F0-08 增加正式运行依赖和许可证说明 (P0, 依赖 V1-F0-07)
 
 ## 阶段 1：模块边界与数据契约
 
@@ -128,9 +128,7 @@
 
 ## 当前阻塞
 
-- 阻塞项：`V1-F0-06` Windows baseline 未全绿；从 `pico/` 目录运行完整测试结果为 `266 passed, 20 failed, 2 skipped, 6 warnings`。
-- 影响范围：`V1-F0-05` 至 `V1-F0-08` 已完成本轮治理、环境、实验和依赖声明施工，但在用户审查通过并 commit 前不勾选；`V1-F1-01` 尚不得启动。
-- 需要决策：用户计划迁移到 macOS 继续开发；迁移后应按 `doc/mac-migration-handoff.md` 重跑 `V1-F0-06` 和 `V1-F0-08` 验证。若 macOS baseline 通过，可把 Windows 失败记录为兼容性已知问题；若 macOS 也失败，先修 baseline 再进入 `V1-F1-01`。
+- 无。阶段 0 已在 macOS 主开发环境完成复验；Windows baseline 失败保留为后续兼容性事项，不阻塞 v1 主线继续推进。
 
 ## 最近完成
 
@@ -141,6 +139,6 @@
 
 ## 最近执行
 
-- 日期：2026-06-16
-- 执行任务：`V1-F0-05 校准项目级任务文件、进度账本和执行 Prompt`；`V1-F0-06 创建根目录 .venv 并验证 Pico baseline`；`V1-F0-07 完成 MapEngine 依赖兼容性实验`；`V1-F0-08 增加正式运行依赖和许可证说明`
-- 结果：文档治理、`.venv` 创建、依赖实验、正式依赖声明和许可证说明已完成；Pico baseline 在 Windows 下未全绿；已新增 `doc/mac-migration-handoff.md` 记录迁移交接与 macOS 复验计划；未 commit，未勾选。
+- 日期：2026-06-17
+- 执行任务：阶段 0 收尾审查与进度标记。
+- 结果：`V1-F0-05` 至 `V1-F0-08` 已由用户完成 commit，并在 macOS 主开发环境通过依赖实验、Pico baseline 和 Ruff 验证；`aider/`、`pico_origin/`、`.venv/`、`.pico/` 均保持忽略，且 `aider/`、`pico_origin/` 已不再被 Git 跟踪。阶段 0 已标记完成；尚未进入 `V1-F1-01`。
