@@ -1,7 +1,34 @@
 """MapEngine-owned data transfer objects."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Literal
+
+
+@dataclass(frozen=True)
+class PromptAnalysis:
+    branch: Literal["specific", "fuzzy"]
+    mentioned_files: tuple[str, ...]
+    mentioned_idents: tuple[str, ...]
+    effective_symbol_hits: tuple[str, ...]
+    path_ident_hits: tuple[str, ...]
+    path_ident_hit_files: Mapping[str, tuple[str, ...]]
+
+    def __post_init__(self) -> None:
+        hit_files = {
+            ident: tuple(paths)
+            for ident, paths in self.path_ident_hit_files.items()
+        }
+        if tuple(hit_files) != self.path_ident_hits:
+            raise ValueError("path_ident_hit_files keys must match path_ident_hits order")
+        if any(paths != tuple(sorted(paths)) for paths in hit_files.values()):
+            raise ValueError("path_ident_hit_files values must be sorted")
+        object.__setattr__(
+            self,
+            "path_ident_hit_files",
+            MappingProxyType(hit_files),
+        )
 
 
 @dataclass(frozen=True)
@@ -103,3 +130,30 @@ class IndexStatus:
     file_count: int
     definition_count: int
     reference_count: int
+
+
+@dataclass(frozen=True)
+class MapContextEvidence:
+    schema_version: str
+    index_snapshot_id: str
+    analysis: PromptAnalysis
+    ranking: RankingEvidence
+    rendering: RenderingEvidence
+    rendered_files: tuple[RenderedFileEvidence, ...]
+    omitted_files: tuple[OmittedFileEvidence, ...]
+    cache_status: CacheEvidence
+    duration_ms: int
+
+
+@dataclass(frozen=True)
+class MapResult:
+    mode: Literal["broad", "focused"]
+    repo_map_text: str
+    focus_fnames: tuple[str, ...]
+    rendered_files: tuple[str, ...]
+    rendered_symbols: tuple[str, ...]
+    evidence: MapContextEvidence
+
+    def __post_init__(self) -> None:
+        if self.focus_fnames != self.evidence.ranking.focus_fnames:
+            raise ValueError("focus_fnames must match evidence.ranking.focus_fnames")
