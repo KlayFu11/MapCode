@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F1-01 创建 MapEngine 配置和版本常量`（待用户明确启动）
+- 下一可执行任务：`V1-F1-03 定义 ranking、rendering 与 cache evidence DTO`（执行中，待用户审查）
 
 ## 阶段 0：固定施工地基
 
@@ -23,7 +23,7 @@
 ## 阶段 1：模块边界与数据契约
 
 - [x] V1-F1-01 创建 MapEngine 配置和版本常量 (P0, 依赖 V1-F0-08)
-- [ ] V1-F1-02 定义索引基础 DTO (P0, 依赖 V1-F1-01)
+- [x] V1-F1-02 定义索引基础 DTO (P0, 依赖 V1-F1-01)
 - [ ] V1-F1-03 定义 ranking、rendering 与 cache evidence DTO (P0, 依赖 V1-F1-02)
 - [ ] V1-F1-04 定义 PromptAnalysis、MapContextEvidence 与 MapResult (P0, 依赖 V1-F1-03)
 - [ ] V1-F1-05 定义 SelectorCandidateCatalog DTO (P0, 依赖 V1-F1-04)
