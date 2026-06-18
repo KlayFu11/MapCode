@@ -22,7 +22,7 @@
 
 ## 阶段 1：模块边界与数据契约
 
-- [ ] V1-F1-01 创建 MapEngine 配置和版本常量 (P0, 依赖 V1-F0-08)
+- [x] V1-F1-01 创建 MapEngine 配置和版本常量 (P0, 依赖 V1-F0-08)
 - [ ] V1-F1-02 定义索引基础 DTO (P0, 依赖 V1-F1-01)
 - [ ] V1-F1-03 定义 ranking、rendering 与 cache evidence DTO (P0, 依赖 V1-F1-02)
 - [ ] V1-F1-04 定义 PromptAnalysis、MapContextEvidence 与 MapResult (P0, 依赖 V1-F1-03)
