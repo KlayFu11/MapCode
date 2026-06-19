@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F1-05 定义 SelectorCandidateCatalog DTO`（执行中，待用户审查）
+- 下一可执行任务：`V1-F1-09 定义 prompt render 与 build result DTO`
 
 ## 阶段 0：固定施工地基
 
@@ -26,10 +26,10 @@
 - [x] V1-F1-02 定义索引基础 DTO (P0, 依赖 V1-F1-01)
 - [x] V1-F1-03 定义 ranking、rendering 与 cache evidence DTO (P0, 依赖 V1-F1-02)
 - [x] V1-F1-04 定义 PromptAnalysis、MapContextEvidence 与 MapResult (P0, 依赖 V1-F1-03)
-- [ ] V1-F1-05 定义 SelectorCandidateCatalog DTO (P0, 依赖 V1-F1-04)
-- [ ] V1-F1-06 定义 SelectorModelRequest 与 selector 决策 DTO (P0, 依赖 V1-F1-05)
-- [ ] V1-F1-07 定义 MapContext 与 artifact DTO (P0, 依赖 V1-F1-06)
-- [ ] V1-F1-08 定义 runtime-owned ModelRequestBudget (P0, 依赖 V1-F1-07)
+- [x] V1-F1-05 定义 SelectorCandidateCatalog DTO (P0, 依赖 V1-F1-04)
+- [x] V1-F1-06 定义 SelectorModelRequest 与 selector 决策 DTO (P0, 依赖 V1-F1-05)
+- [x] V1-F1-07 定义 MapContext 与 artifact DTO (P0, 依赖 V1-F1-06)
+- [x] V1-F1-08 定义 runtime-owned ModelRequestBudget (P0, 依赖 V1-F1-07)
 - [ ] V1-F1-09 定义 prompt render 与 build result DTO (P0, 依赖 V1-F1-08)
 - [ ] V1-F1-10 增加 MapEngine 与预算架构边界测试 (P0, 依赖 V1-F1-09)
 
