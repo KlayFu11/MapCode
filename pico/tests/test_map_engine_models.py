@@ -17,6 +17,7 @@ from pico.features.map_engine.models import (
     ReferenceRecord,
     RenderedFileEvidence,
     RenderingEvidence,
+    SelectorCandidateCatalog,
 )
 
 
@@ -486,4 +487,123 @@ def test_map_result_requires_focus_fnames_to_match_ranking_evidence():
             rendered_files=("pico/core/engine.py",),
             rendered_symbols=("Engine",),
             evidence=evidence,
+        )
+
+
+def _selector_catalog() -> SelectorCandidateCatalog:
+    return SelectorCandidateCatalog(
+        index_snapshot_id="sha256:abc123",
+        candidate_paths=(
+            "pico/core/engine.py",
+            "pico/core/runtime.py",
+            "pico/tools/registry.py",
+        ),
+        rendered_paths=(
+            "pico/core/engine.py",
+            "pico/tools/registry.py",
+        ),
+        rendered_text=(
+            "pico/core/engine.py:\n"
+            "  class Engine\n"
+            "pico/tools/registry.py:\n"
+            "  class ToolRegistry"
+        ),
+        file_count=3,
+        definition_count=5,
+        rendered_file_count=2,
+        rendered_definition_count=2,
+        estimated_tokens=20,
+        truncated=True,
+    )
+
+
+def test_selector_candidate_catalog_separates_snapshot_and_visible_paths():
+    catalog = _selector_catalog()
+
+    assert catalog.index_snapshot_id == "sha256:abc123"
+    assert catalog.candidate_paths == (
+        "pico/core/engine.py",
+        "pico/core/runtime.py",
+        "pico/tools/registry.py",
+    )
+    assert catalog.rendered_paths == (
+        "pico/core/engine.py",
+        "pico/tools/registry.py",
+    )
+    assert "pico/core/runtime.py" not in catalog.rendered_text
+    assert catalog.file_count == 3
+    assert catalog.definition_count == 5
+    assert catalog.rendered_file_count == 2
+    assert catalog.rendered_definition_count == 2
+    assert catalog.estimated_tokens == 20
+    assert catalog.truncated is True
+    assert not hasattr(catalog, "visible_paths")
+
+
+def test_selector_candidate_catalog_is_immutable_value_object():
+    catalog = _selector_catalog()
+
+    with pytest.raises(FrozenInstanceError):
+        catalog.truncated = False
+
+
+def test_selector_candidate_catalog_validates_candidate_path_order():
+    with pytest.raises(ValueError, match="candidate_paths"):
+        SelectorCandidateCatalog(
+            index_snapshot_id="sha256:abc123",
+            candidate_paths=(
+                "pico/tools/registry.py",
+                "pico/core/engine.py",
+            ),
+            rendered_paths=("pico/core/engine.py",),
+            rendered_text="pico/core/engine.py:\n  class Engine",
+            file_count=2,
+            definition_count=2,
+            rendered_file_count=1,
+            rendered_definition_count=1,
+            estimated_tokens=12,
+            truncated=False,
+        )
+
+
+def test_selector_candidate_catalog_validates_rendered_paths_are_visible_subset():
+    with pytest.raises(ValueError, match="rendered_paths"):
+        SelectorCandidateCatalog(
+            index_snapshot_id="sha256:abc123",
+            candidate_paths=("pico/core/engine.py",),
+            rendered_paths=("pico/core/runtime.py",),
+            rendered_text="pico/core/runtime.py:\n  class Runtime",
+            file_count=1,
+            definition_count=1,
+            rendered_file_count=1,
+            rendered_definition_count=1,
+            estimated_tokens=10,
+            truncated=False,
+        )
+
+
+def test_selector_candidate_catalog_validates_rendered_path_order():
+    with pytest.raises(ValueError, match="rendered_paths"):
+        SelectorCandidateCatalog(
+            index_snapshot_id="sha256:abc123",
+            candidate_paths=(
+                "pico/core/engine.py",
+                "pico/tools/registry.py",
+            ),
+            rendered_paths=(
+                "pico/tools/registry.py",
+                "pico/core/engine.py",
+            ),
+            rendered_text=(
+                "pico/tools/registry.py:\n"
+                "  class ToolRegistry\n"
+                "pico/core/engine.py:\n"
+                "  class Engine"
+            ),
+            file_count=2,
+            definition_count=2,
+            rendered_file_count=2,
+            rendered_definition_count=2,
+            estimated_tokens=12,
+            truncated=False,
         )

@@ -157,3 +157,26 @@ class MapResult:
     def __post_init__(self) -> None:
         if self.focus_fnames != self.evidence.ranking.focus_fnames:
             raise ValueError("focus_fnames must match evidence.ranking.focus_fnames")
+
+
+@dataclass(frozen=True)
+class SelectorCandidateCatalog:
+    index_snapshot_id: str
+    candidate_paths: tuple[str, ...]
+    rendered_paths: tuple[str, ...]
+    rendered_text: str
+    file_count: int
+    definition_count: int
+    rendered_file_count: int
+    rendered_definition_count: int
+    estimated_tokens: int
+    truncated: bool
+
+    def __post_init__(self) -> None:
+        if self.candidate_paths != tuple(sorted(self.candidate_paths)):
+            raise ValueError("candidate_paths must be sorted")
+        if self.rendered_paths != tuple(sorted(self.rendered_paths)):
+            raise ValueError("rendered_paths must be sorted")
+        candidate_path_set = set(self.candidate_paths)
+        if any(path not in candidate_path_set for path in self.rendered_paths):
+            raise ValueError("rendered_paths must be a subset of candidate_paths")
