@@ -24,6 +24,7 @@ from tree_sitter_language_pack import get_parser
 from pico.features.map_engine.config import MAP_ENGINE_SCHEMA_VERSION
 from pico.features.map_engine.config import PARSER_VERSION
 from pico.features.map_engine.config import QUERY_VERSION
+from pico.features.map_engine.models import CacheEvidence
 from pico.features.map_engine.models import DefinitionRecord
 from pico.features.map_engine.models import FileRecord
 from pico.features.map_engine.models import ReferenceRecord
@@ -48,6 +49,8 @@ SymbolParseSkipReason = Literal[
     "parse_failed",
     "query_failed",
 ]
+CacheReadStatus = Literal["hit", "miss", "read_failed"]
+CacheWriteStatus = Literal["not_needed", "written", "write_failed"]
 
 
 @dataclass(frozen=True)
@@ -88,6 +91,19 @@ class _SymbolIndexCache:
 
 
 @dataclass(frozen=True)
+class _CacheLoadResult:
+    cache: _SymbolIndexCache | None
+    read_status: CacheReadStatus
+
+
+@dataclass(frozen=True)
+class _CacheSplitResult:
+    reused_files: tuple[ParsedSourceFile, ...]
+    paths_to_parse: tuple[str, ...]
+    read_status: CacheReadStatus
+
+
+@dataclass(frozen=True)
 class SymbolIndex:
     all_defs: frozenset[str]
     definitions_by_symbol: Mapping[str, tuple[DefinitionRecord, ...]]
@@ -96,6 +112,7 @@ class SymbolIndex:
     file_records: Mapping[str, FileRecord]
     index_snapshot_id: str
     skipped_files: tuple[SkippedSymbolFile, ...]
+    cache_status: CacheEvidence
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -139,6 +156,10 @@ class SymbolParseError(RuntimeError):
     def __init__(self, reason: SymbolParseSkipReason) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class _CacheMiss(ValueError):
+    """Raised when readable cache metadata is stale for current versions."""
 
 
 def extract_python_definitions(
@@ -186,17 +207,17 @@ def build_symbol_index(
 ) -> SymbolIndex:
     root = Path(repo_root)
     ordered_source_paths = tuple(sorted(dict.fromkeys(source_paths)))
-    cache = _load_symbol_index_cache(root)
+    cache_load = _load_symbol_index_cache(root)
     current_file_records = _current_file_records(root, ordered_source_paths)
-    reused_files, paths_to_parse = _split_cache_hits(
-        cache,
+    cache_split = _split_cache_hits(
+        cache_load,
         current_file_records,
         ordered_source_paths,
     )
-    parse_result = parse_python_source_files(root, paths_to_parse)
+    parse_result = parse_python_source_files(root, cache_split.paths_to_parse)
     parsed_files = tuple(
         sorted(
-            (*reused_files, *parse_result.parsed_files),
+            (*cache_split.reused_files, *parse_result.parsed_files),
             key=lambda file: file.path,
         )
     )
@@ -205,13 +226,30 @@ def build_symbol_index(
         or _file_record_for_path(root, parsed_file.path)
         for parsed_file in parsed_files
     }
+    index_snapshot_id = _build_index_snapshot_id(file_records.values())
+    write_status = _cache_write_status(
+        root,
+        cache_split,
+        parse_result,
+        index_snapshot_id,
+        file_records,
+        parsed_files,
+    )
+    cache_status = CacheEvidence(
+        read_status=cache_split.read_status,
+        write_status=write_status,
+        reused_files=tuple(file.path for file in cache_split.reused_files),
+        parsed_files=tuple(file.path for file in parse_result.parsed_files),
+        skipped_files=tuple(file.path for file in parse_result.skipped_files),
+    )
 
     index = _build_symbol_index(
         parsed_files=parsed_files,
         skipped_files=parse_result.skipped_files,
         file_records=file_records,
+        index_snapshot_id=index_snapshot_id,
+        cache_status=cache_status,
     )
-    _write_symbol_index_cache(root, index, parsed_files)
     return index
 
 
@@ -219,6 +257,8 @@ def _build_symbol_index(
     parsed_files: Sequence[ParsedSourceFile],
     skipped_files: tuple[SkippedSymbolFile, ...],
     file_records: Mapping[str, FileRecord],
+    index_snapshot_id: str,
+    cache_status: CacheEvidence,
 ) -> SymbolIndex:
     return SymbolIndex(
         all_defs=frozenset(
@@ -230,8 +270,9 @@ def _build_symbol_index(
         definitions_by_file=_build_definitions_by_file(parsed_files),
         references_by_file=_build_references_by_file(parsed_files),
         file_records=file_records,
-        index_snapshot_id=_build_index_snapshot_id(file_records.values()),
+        index_snapshot_id=index_snapshot_id,
         skipped_files=skipped_files,
+        cache_status=cache_status,
     )
 
 
@@ -360,12 +401,17 @@ def _current_file_records(
 
 
 def _split_cache_hits(
-    cache: _SymbolIndexCache | None,
+    cache_load: _CacheLoadResult,
     current_file_records: Mapping[str, FileRecord],
     source_paths: Sequence[str],
-) -> tuple[tuple[ParsedSourceFile, ...], tuple[str, ...]]:
+) -> _CacheSplitResult:
+    cache = cache_load.cache
     if cache is None:
-        return (), tuple(source_paths)
+        return _CacheSplitResult(
+            reused_files=(),
+            paths_to_parse=tuple(source_paths),
+            read_status=cache_load.read_status,
+        )
 
     reused_files = []
     paths_to_parse = []
@@ -381,7 +427,19 @@ def _split_cache_hits(
         else:
             paths_to_parse.append(relative_path)
 
-    return tuple(reused_files), tuple(paths_to_parse)
+    cache_paths = set(cache.files)
+    source_path_set = set(source_paths)
+    read_status: CacheReadStatus = (
+        "hit"
+        if not paths_to_parse and cache_paths == source_path_set
+        else "miss"
+    )
+
+    return _CacheSplitResult(
+        reused_files=tuple(reused_files),
+        paths_to_parse=tuple(paths_to_parse),
+        read_status=read_status,
+    )
 
 
 def _file_record_for_path(repo_root: Path, relative_path: str) -> FileRecord:
@@ -414,33 +472,64 @@ def _build_index_snapshot_id(file_records: Iterable[FileRecord]) -> str:
     return f"sha256:{digest}"
 
 
-def _load_symbol_index_cache(repo_root: Path) -> _SymbolIndexCache | None:
+def _load_symbol_index_cache(repo_root: Path) -> _CacheLoadResult:
     try:
         index_payload = json.loads(_index_cache_path(repo_root).read_text(encoding="utf-8"))
         meta_payload = json.loads(_cache_meta_path(repo_root).read_text(encoding="utf-8"))
-        return _symbol_index_cache_from_payloads(index_payload, meta_payload)
-    except (OSError, TypeError, ValueError, json.JSONDecodeError):
-        return None
+        cache = _symbol_index_cache_from_payloads(index_payload, meta_payload)
+        return _CacheLoadResult(cache=cache, read_status="miss")
+    except FileNotFoundError:
+        return _CacheLoadResult(cache=None, read_status="miss")
+    except _CacheMiss:
+        return _CacheLoadResult(cache=None, read_status="miss")
+    except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
+        return _CacheLoadResult(cache=None, read_status="read_failed")
+
+
+def _cache_write_status(
+    repo_root: Path,
+    cache_split: _CacheSplitResult,
+    parse_result: SymbolParseResult,
+    index_snapshot_id: str,
+    file_records: Mapping[str, FileRecord],
+    parsed_files: Sequence[ParsedSourceFile],
+) -> CacheWriteStatus:
+    if (
+        cache_split.read_status == "hit"
+        and not cache_split.paths_to_parse
+        and not parse_result.skipped_files
+    ):
+        return "not_needed"
+
+    return _write_symbol_index_cache(
+        repo_root,
+        index_snapshot_id,
+        file_records,
+        parsed_files,
+    )
 
 
 def _write_symbol_index_cache(
     repo_root: Path,
-    index: SymbolIndex,
+    index_snapshot_id: str,
+    file_records: Mapping[str, FileRecord],
     parsed_files: Sequence[ParsedSourceFile],
-) -> None:
+) -> CacheWriteStatus:
     try:
         cache_dir = _cache_dir_for_repo(repo_root)
         cache_dir.mkdir(parents=True, exist_ok=True)
         _write_json(
             cache_dir / INDEX_CACHE_FILE_NAME,
-            _index_cache_payload(index, parsed_files),
+            _index_cache_payload(index_snapshot_id, file_records, parsed_files),
         )
         _write_json(
             cache_dir / CACHE_META_FILE_NAME,
-            _cache_meta_payload(index.file_records.values(), index.index_snapshot_id),
+            _cache_meta_payload(file_records.values(), index_snapshot_id),
         )
     except OSError:
-        return
+        return "write_failed"
+
+    return "written"
 
 
 def _symbol_index_cache_from_payloads(
@@ -450,12 +539,15 @@ def _symbol_index_cache_from_payloads(
     if not (
         isinstance(index_payload, dict)
         and isinstance(meta_payload, dict)
-        and _cache_payload_versions_match(index_payload)
-        and _cache_payload_versions_match(meta_payload)
         and index_payload.get("index_snapshot_id")
         == meta_payload.get("index_snapshot_id")
     ):
         raise ValueError("invalid symbol index cache")
+    if not (
+        _cache_payload_versions_match(index_payload)
+        and _cache_payload_versions_match(meta_payload)
+    ):
+        raise _CacheMiss
 
     meta_records = {
         record.path: record
@@ -547,16 +639,17 @@ def _reference_record_from_payload(payload: Mapping[str, object]) -> ReferenceRe
 
 
 def _index_cache_payload(
-    index: SymbolIndex,
+    index_snapshot_id: str,
+    file_records: Mapping[str, FileRecord],
     parsed_files: Sequence[ParsedSourceFile],
 ) -> dict[str, object]:
     return {
         "schema_version": MAP_ENGINE_SCHEMA_VERSION,
         "parser_version": PARSER_VERSION,
         "query_version": QUERY_VERSION,
-        "index_snapshot_id": index.index_snapshot_id,
+        "index_snapshot_id": index_snapshot_id,
         "files": [
-            _parsed_file_cache_payload(parsed_file, index.file_records[parsed_file.path])
+            _parsed_file_cache_payload(parsed_file, file_records[parsed_file.path])
             for parsed_file in sorted(parsed_files, key=lambda file: file.path)
         ],
     }

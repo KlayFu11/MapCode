@@ -1,10 +1,13 @@
 import json
 from pathlib import Path
 
+import pytest
+
 import pico.features.map_engine.symbol_index as symbol_index
 from pico.features.map_engine.config import MAP_ENGINE_SCHEMA_VERSION
 from pico.features.map_engine.config import PARSER_VERSION
 from pico.features.map_engine.config import QUERY_VERSION
+from pico.features.map_engine.models import CacheEvidence
 from pico.features.map_engine.models import DefinitionRecord
 from pico.features.map_engine.models import FileRecord
 from pico.features.map_engine.models import ReferenceRecord
@@ -342,6 +345,13 @@ def test_build_symbol_index_persists_index_and_cache_metadata(tmp_path: Path):
 
     index = build_symbol_index(tmp_path, ("pkg/service.py",))
 
+    assert index.cache_status == CacheEvidence(
+        read_status="miss",
+        write_status="written",
+        reused_files=(),
+        parsed_files=("pkg/service.py",),
+        skipped_files=(),
+    )
     cache_dir = tmp_path / ".pico" / "map_engine"
     index_payload = json.loads(
         (cache_dir / "index.json").read_text(encoding="utf-8")
@@ -418,6 +428,13 @@ def test_build_symbol_index_reuses_cache_for_unchanged_files(
     cached = build_symbol_index(tmp_path, ("pkg/service.py",))
 
     assert cached.index_snapshot_id == initial.index_snapshot_id
+    assert cached.cache_status == CacheEvidence(
+        read_status="hit",
+        write_status="not_needed",
+        reused_files=("pkg/service.py",),
+        parsed_files=(),
+        skipped_files=(),
+    )
     assert cached.definitions_by_file == {
         "pkg/service.py": (
             DefinitionRecord("build", "pkg/service.py", 0, "function"),
@@ -454,6 +471,13 @@ def test_build_symbol_index_reparses_changed_files_and_reuses_unchanged_cache(
     index = build_symbol_index(tmp_path, ("pkg/first.py", "pkg/second.py"))
 
     assert parsed_paths == ["pkg/first.py"]
+    assert index.cache_status == CacheEvidence(
+        read_status="miss",
+        write_status="written",
+        reused_files=("pkg/second.py",),
+        parsed_files=("pkg/first.py",),
+        skipped_files=(),
+    )
     assert index.definitions_by_file["pkg/first.py"] == (
         DefinitionRecord("first_changed", "pkg/first.py", 0, "function"),
     )
@@ -472,7 +496,132 @@ def test_build_symbol_index_cache_write_failure_does_not_interrupt_index(
 
     index = build_symbol_index(tmp_path, ("pkg/service.py",))
 
+    assert index.cache_status == CacheEvidence(
+        read_status="read_failed",
+        write_status="write_failed",
+        reused_files=(),
+        parsed_files=("pkg/service.py",),
+        skipped_files=(),
+    )
     assert index.all_defs == frozenset({"build"})
     assert index.references_by_file == {
         "pkg/service.py": (ReferenceRecord("helper", "pkg/service.py", 1),),
+    }
+
+
+@pytest.mark.parametrize(
+    "version_name",
+    ("PARSER_VERSION", "QUERY_VERSION", "MAP_ENGINE_SCHEMA_VERSION"),
+)
+def test_build_symbol_index_invalidates_cache_when_version_changes(
+    tmp_path: Path,
+    monkeypatch,
+    version_name: str,
+):
+    source = tmp_path / "pkg" / "service.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def build():\n    return helper()\n", encoding="utf-8")
+    build_symbol_index(tmp_path, ("pkg/service.py",))
+    parsed_paths = []
+    original_parse = symbol_index._parse_python_source
+
+    def track_parse(source_text, repo_relative_path):
+        parsed_paths.append(repo_relative_path)
+        return original_parse(source_text, repo_relative_path)
+
+    monkeypatch.setattr(symbol_index, version_name, f"changed-{version_name}")
+    monkeypatch.setattr(symbol_index, "_parse_python_source", track_parse)
+
+    index = build_symbol_index(tmp_path, ("pkg/service.py",))
+
+    assert parsed_paths == ["pkg/service.py"]
+    assert index.cache_status == CacheEvidence(
+        read_status="miss",
+        write_status="written",
+        reused_files=(),
+        parsed_files=("pkg/service.py",),
+        skipped_files=(),
+    )
+
+
+def test_build_symbol_index_records_added_file_as_cache_miss(
+    tmp_path: Path,
+    monkeypatch,
+):
+    first = tmp_path / "pkg" / "first.py"
+    second = tmp_path / "pkg" / "second.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("def first():\n    return helper()\n", encoding="utf-8")
+    build_symbol_index(tmp_path, ("pkg/first.py",))
+    second.write_text("def second():\n    return first()\n", encoding="utf-8")
+    parsed_paths = []
+    original_parse = symbol_index._parse_python_source
+
+    def track_parse(source_text, repo_relative_path):
+        parsed_paths.append(repo_relative_path)
+        return original_parse(source_text, repo_relative_path)
+
+    monkeypatch.setattr(symbol_index, "_parse_python_source", track_parse)
+
+    index = build_symbol_index(tmp_path, ("pkg/first.py", "pkg/second.py"))
+
+    assert parsed_paths == ["pkg/second.py"]
+    assert index.cache_status == CacheEvidence(
+        read_status="miss",
+        write_status="written",
+        reused_files=("pkg/first.py",),
+        parsed_files=("pkg/second.py",),
+        skipped_files=(),
+    )
+
+
+def test_build_symbol_index_records_deleted_file_as_skipped_cache_miss(
+    tmp_path: Path,
+):
+    first = tmp_path / "pkg" / "first.py"
+    second = tmp_path / "pkg" / "second.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("def first():\n    return second()\n", encoding="utf-8")
+    second.write_text("def second():\n    return first()\n", encoding="utf-8")
+    build_symbol_index(tmp_path, ("pkg/first.py", "pkg/second.py"))
+    second.unlink()
+
+    index = build_symbol_index(tmp_path, ("pkg/first.py", "pkg/second.py"))
+
+    assert index.cache_status == CacheEvidence(
+        read_status="miss",
+        write_status="written",
+        reused_files=("pkg/first.py",),
+        parsed_files=(),
+        skipped_files=("pkg/second.py",),
+    )
+    assert index.skipped_files == (
+        SkippedSymbolFile(path="pkg/second.py", reason="read_failed"),
+    )
+
+
+def test_build_symbol_index_records_cache_read_failure_and_recovers(
+    tmp_path: Path,
+):
+    source = tmp_path / "pkg" / "service.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def build():\n    return helper()\n", encoding="utf-8")
+    cache_dir = tmp_path / ".pico" / "map_engine"
+    cache_dir.mkdir(parents=True)
+    (cache_dir / "index.json").write_text("{", encoding="utf-8")
+    (cache_dir / "cache.meta.json").write_text("{}", encoding="utf-8")
+
+    index = build_symbol_index(tmp_path, ("pkg/service.py",))
+
+    assert index.cache_status == CacheEvidence(
+        read_status="read_failed",
+        write_status="written",
+        reused_files=(),
+        parsed_files=("pkg/service.py",),
+        skipped_files=(),
+    )
+    assert index.definitions_by_file == {
+        "pkg/service.py": (
+            DefinitionRecord("build", "pkg/service.py", 0, "function"),
+        ),
     }
