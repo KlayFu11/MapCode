@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F2-04 提取 references 并隔离单文件失败`
+- 下一可执行任务：`V1-F2-05 构建 SymbolIndex 和稳定 snapshot id`
 
 ## 阶段 0：固定施工地基
 
@@ -38,7 +38,7 @@
 - [x] V1-F2-01 实现 Git tracked/staged 文件枚举 (P0, 依赖 V1-F1-10)
 - [x] V1-F2-02 实现 Python-only、denylist 和非 Git 降级 (P0, 依赖 V1-F2-01)
 - [x] V1-F2-03 使用 tree-sitter query 提取 definitions (P0, 依赖 V1-F2-02)
-- [ ] V1-F2-04 提取 references 并隔离单文件失败 (P0, 依赖 V1-F2-03)
+- [x] V1-F2-04 提取 references 并隔离单文件失败 (P0, 依赖 V1-F2-03)
 - [ ] V1-F2-05 构建 SymbolIndex 和稳定 snapshot id (P0, 依赖 V1-F2-04)
 - [ ] V1-F2-06 实现 index/cache 读取与 cache hit (P0, 依赖 V1-F2-05)
 - [ ] V1-F2-07 实现版本失效、文件变化与 cache 失败 evidence (P0, 依赖 V1-F2-06)

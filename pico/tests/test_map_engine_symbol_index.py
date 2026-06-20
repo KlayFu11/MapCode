@@ -1,12 +1,17 @@
 from pathlib import Path
 
 import pico.features.map_engine.symbol_index as symbol_index
+from pico.features.map_engine.config import MAP_ENGINE_SCHEMA_VERSION
+from pico.features.map_engine.config import PARSER_VERSION
+from pico.features.map_engine.config import QUERY_VERSION
 from pico.features.map_engine.models import DefinitionRecord
+from pico.features.map_engine.models import FileRecord
 from pico.features.map_engine.models import ReferenceRecord
 from pico.features.map_engine.symbol_index import (
     PYTHON_TAGS_QUERY_PATH,
     ParsedSourceFile,
     SkippedSymbolFile,
+    build_symbol_index,
     extract_python_definitions,
     extract_python_references,
     parse_python_source_files,
@@ -237,3 +242,90 @@ def test_parse_python_source_files_records_parse_failure_and_continues(
     assert result.skipped_files == (
         SkippedSymbolFile(path="broken.py", reason="parse_failed"),
     )
+
+
+def test_build_symbol_index_groups_definitions_references_and_file_records(
+    tmp_path: Path,
+):
+    first = tmp_path / "pkg" / "first.py"
+    second = tmp_path / "pkg" / "second.py"
+    first.parent.mkdir(parents=True)
+    first.write_text(
+        "class Service:\n    pass\n\n\ndef build():\n    return helper()\n",
+        encoding="utf-8",
+    )
+    second.write_text(
+        "class Service:\n    pass\n\n\ndef helper():\n    return Service()\n",
+        encoding="utf-8",
+    )
+
+    index = build_symbol_index(
+        tmp_path,
+        ("pkg/second.py", "pkg/first.py"),
+    )
+
+    first_record = FileRecord(
+        path="pkg/first.py",
+        mtime_ns=first.stat().st_mtime_ns,
+        size=first.stat().st_size,
+        parser_version=PARSER_VERSION,
+        query_version=QUERY_VERSION,
+        schema_version=MAP_ENGINE_SCHEMA_VERSION,
+    )
+    second_record = FileRecord(
+        path="pkg/second.py",
+        mtime_ns=second.stat().st_mtime_ns,
+        size=second.stat().st_size,
+        parser_version=PARSER_VERSION,
+        query_version=QUERY_VERSION,
+        schema_version=MAP_ENGINE_SCHEMA_VERSION,
+    )
+
+    assert index.all_defs == frozenset({"Service", "build", "helper"})
+    assert tuple(index.file_records) == ("pkg/first.py", "pkg/second.py")
+    assert dict(index.file_records) == {
+        "pkg/first.py": first_record,
+        "pkg/second.py": second_record,
+    }
+    assert index.definitions_by_file == {
+        "pkg/first.py": (
+            DefinitionRecord("Service", "pkg/first.py", 0, "class"),
+            DefinitionRecord("build", "pkg/first.py", 4, "function"),
+        ),
+        "pkg/second.py": (
+            DefinitionRecord("Service", "pkg/second.py", 0, "class"),
+            DefinitionRecord("helper", "pkg/second.py", 4, "function"),
+        ),
+    }
+    assert index.definitions_by_symbol["Service"] == (
+        DefinitionRecord("Service", "pkg/first.py", 0, "class"),
+        DefinitionRecord("Service", "pkg/second.py", 0, "class"),
+    )
+    assert index.references_by_file == {
+        "pkg/first.py": (ReferenceRecord("helper", "pkg/first.py", 5),),
+        "pkg/second.py": (ReferenceRecord("Service", "pkg/second.py", 5),),
+    }
+    assert index.skipped_files == ()
+
+
+def test_symbol_index_snapshot_id_is_stable_for_same_file_metadata(
+    tmp_path: Path,
+    monkeypatch,
+):
+    first = tmp_path / "pkg" / "first.py"
+    second = tmp_path / "pkg" / "second.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("def first():\n    return second()\n", encoding="utf-8")
+    second.write_text("def second():\n    return first()\n", encoding="utf-8")
+
+    index_a = build_symbol_index(tmp_path, ("pkg/second.py", "pkg/first.py"))
+    monkeypatch.setattr(
+        symbol_index,
+        "RANKING_POLICY_VERSION",
+        "mapcode-pagerank-test-only",
+        raising=False,
+    )
+    index_b = build_symbol_index(tmp_path, ("pkg/first.py", "pkg/second.py"))
+
+    assert index_a.index_snapshot_id.startswith("sha256:")
+    assert index_a.index_snapshot_id == index_b.index_snapshot_id

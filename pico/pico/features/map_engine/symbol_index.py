@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Iterable
 from collections.abc import Iterator
+from collections.abc import Mapping
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 from typing import Literal
 
@@ -16,7 +21,11 @@ from tree_sitter import Tree
 from tree_sitter_language_pack import get_language
 from tree_sitter_language_pack import get_parser
 
+from pico.features.map_engine.config import MAP_ENGINE_SCHEMA_VERSION
+from pico.features.map_engine.config import PARSER_VERSION
+from pico.features.map_engine.config import QUERY_VERSION
 from pico.features.map_engine.models import DefinitionRecord
+from pico.features.map_engine.models import FileRecord
 from pico.features.map_engine.models import ReferenceRecord
 
 PYTHON_TAGS_QUERY_PATH = Path(__file__).with_name("queries") / "python-tags.scm"
@@ -55,6 +64,54 @@ class ParsedSourceFile:
 class SymbolParseResult:
     parsed_files: tuple[ParsedSourceFile, ...]
     skipped_files: tuple[SkippedSymbolFile, ...]
+
+
+@dataclass(frozen=True)
+class SymbolIndex:
+    all_defs: frozenset[str]
+    definitions_by_symbol: Mapping[str, tuple[DefinitionRecord, ...]]
+    definitions_by_file: Mapping[str, tuple[DefinitionRecord, ...]]
+    references_by_file: Mapping[str, tuple[ReferenceRecord, ...]]
+    file_records: Mapping[str, FileRecord]
+    index_snapshot_id: str
+    skipped_files: tuple[SkippedSymbolFile, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "definitions_by_symbol",
+            MappingProxyType(
+                {
+                    symbol: tuple(records)
+                    for symbol, records in self.definitions_by_symbol.items()
+                }
+            ),
+        )
+        object.__setattr__(
+            self,
+            "definitions_by_file",
+            MappingProxyType(
+                {
+                    path: tuple(records)
+                    for path, records in self.definitions_by_file.items()
+                }
+            ),
+        )
+        object.__setattr__(
+            self,
+            "references_by_file",
+            MappingProxyType(
+                {
+                    path: tuple(records)
+                    for path, records in self.references_by_file.items()
+                }
+            ),
+        )
+        object.__setattr__(
+            self,
+            "file_records",
+            MappingProxyType(dict(self.file_records)),
+        )
 
 
 class SymbolParseError(RuntimeError):
@@ -99,6 +156,34 @@ def parse_python_source_files(
     return SymbolParseResult(
         parsed_files=tuple(parsed_files),
         skipped_files=tuple(skipped_files),
+    )
+
+
+def build_symbol_index(
+    repo_root: str | Path,
+    source_paths: Sequence[str],
+) -> SymbolIndex:
+    root = Path(repo_root)
+    ordered_source_paths = tuple(sorted(dict.fromkeys(source_paths)))
+    parse_result = parse_python_source_files(root, ordered_source_paths)
+    parsed_files = tuple(sorted(parse_result.parsed_files, key=lambda file: file.path))
+    file_records = {
+        parsed_file.path: _file_record_for_path(root, parsed_file.path)
+        for parsed_file in parsed_files
+    }
+
+    return SymbolIndex(
+        all_defs=frozenset(
+            definition.name
+            for parsed_file in parsed_files
+            for definition in parsed_file.definitions
+        ),
+        definitions_by_symbol=_build_definitions_by_symbol(parsed_files),
+        definitions_by_file=_build_definitions_by_file(parsed_files),
+        references_by_file=_build_references_by_file(parsed_files),
+        file_records=file_records,
+        index_snapshot_id=_build_index_snapshot_id(file_records.values()),
+        skipped_files=parse_result.skipped_files,
     )
 
 
@@ -169,6 +254,87 @@ def _reference_records(
             ),
         )
     )
+
+
+def _build_definitions_by_symbol(
+    parsed_files: Sequence[ParsedSourceFile],
+) -> dict[str, tuple[DefinitionRecord, ...]]:
+    grouped: dict[str, list[DefinitionRecord]] = {}
+    for parsed_file in parsed_files:
+        for definition in parsed_file.definitions:
+            grouped.setdefault(definition.name, []).append(definition)
+
+    return {
+        symbol: tuple(
+            sorted(
+                records,
+                key=lambda definition: (
+                    definition.path,
+                    definition.line,
+                    definition.name,
+                    definition.kind,
+                ),
+            )
+        )
+        for symbol, records in sorted(grouped.items())
+    }
+
+
+def _build_definitions_by_file(
+    parsed_files: Sequence[ParsedSourceFile],
+) -> dict[str, tuple[DefinitionRecord, ...]]:
+    return {
+        parsed_file.path: parsed_file.definitions
+        for parsed_file in sorted(parsed_files, key=lambda file: file.path)
+    }
+
+
+def _build_references_by_file(
+    parsed_files: Sequence[ParsedSourceFile],
+) -> dict[str, tuple[ReferenceRecord, ...]]:
+    return {
+        parsed_file.path: parsed_file.references
+        for parsed_file in sorted(parsed_files, key=lambda file: file.path)
+    }
+
+
+def _file_record_for_path(repo_root: Path, relative_path: str) -> FileRecord:
+    stat_result = (repo_root / relative_path).stat()
+    return FileRecord(
+        path=relative_path,
+        mtime_ns=stat_result.st_mtime_ns,
+        size=stat_result.st_size,
+        parser_version=PARSER_VERSION,
+        query_version=QUERY_VERSION,
+        schema_version=MAP_ENGINE_SCHEMA_VERSION,
+    )
+
+
+def _build_index_snapshot_id(file_records: Iterable[FileRecord]) -> str:
+    payload = {
+        "schema_version": MAP_ENGINE_SCHEMA_VERSION,
+        "parser_version": PARSER_VERSION,
+        "query_version": QUERY_VERSION,
+        "files": [
+            {
+                "path": record.path,
+                "mtime_ns": record.mtime_ns,
+                "size": record.size,
+            }
+            for record in sorted(file_records, key=lambda record: record.path)
+        ],
+    }
+    digest = hashlib.sha256(_canonical_json(payload)).hexdigest()
+    return f"sha256:{digest}"
+
+
+def _canonical_json(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
 
 
 def _source_to_bytes(source: str | bytes) -> bytes:
