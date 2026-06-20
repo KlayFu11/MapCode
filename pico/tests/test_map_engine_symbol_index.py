@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pico.features.map_engine.symbol_index as symbol_index
@@ -329,3 +330,149 @@ def test_symbol_index_snapshot_id_is_stable_for_same_file_metadata(
 
     assert index_a.index_snapshot_id.startswith("sha256:")
     assert index_a.index_snapshot_id == index_b.index_snapshot_id
+
+
+def test_build_symbol_index_persists_index_and_cache_metadata(tmp_path: Path):
+    source = tmp_path / "pkg" / "service.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "class Service:\n    pass\n\n\ndef build():\n    return Service()\n",
+        encoding="utf-8",
+    )
+
+    index = build_symbol_index(tmp_path, ("pkg/service.py",))
+
+    cache_dir = tmp_path / ".pico" / "map_engine"
+    index_payload = json.loads(
+        (cache_dir / "index.json").read_text(encoding="utf-8")
+    )
+    meta_payload = json.loads(
+        (cache_dir / "cache.meta.json").read_text(encoding="utf-8")
+    )
+
+    assert index_payload["schema_version"] == MAP_ENGINE_SCHEMA_VERSION
+    assert index_payload["parser_version"] == PARSER_VERSION
+    assert index_payload["query_version"] == QUERY_VERSION
+    assert index_payload["index_snapshot_id"] == index.index_snapshot_id
+    assert index_payload["files"] == [
+        {
+            "path": "pkg/service.py",
+            "mtime_ns": source.stat().st_mtime_ns,
+            "size": source.stat().st_size,
+            "definitions": [
+                {
+                    "name": "Service",
+                    "path": "pkg/service.py",
+                    "line": 0,
+                    "kind": "class",
+                },
+                {
+                    "name": "build",
+                    "path": "pkg/service.py",
+                    "line": 4,
+                    "kind": "function",
+                },
+            ],
+            "references": [
+                {
+                    "name": "Service",
+                    "path": "pkg/service.py",
+                    "line": 5,
+                },
+            ],
+        }
+    ]
+    assert meta_payload == {
+        "schema_version": MAP_ENGINE_SCHEMA_VERSION,
+        "parser_version": PARSER_VERSION,
+        "query_version": QUERY_VERSION,
+        "index_snapshot_id": index.index_snapshot_id,
+        "files": [
+            {
+                "path": "pkg/service.py",
+                "mtime_ns": source.stat().st_mtime_ns,
+                "size": source.stat().st_size,
+                "parser_version": PARSER_VERSION,
+                "query_version": QUERY_VERSION,
+                "schema_version": MAP_ENGINE_SCHEMA_VERSION,
+            },
+        ],
+    }
+
+
+def test_build_symbol_index_reuses_cache_for_unchanged_files(
+    tmp_path: Path,
+    monkeypatch,
+):
+    source = tmp_path / "pkg" / "service.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def build():\n    return helper()\n", encoding="utf-8")
+
+    initial = build_symbol_index(tmp_path, ("pkg/service.py",))
+
+    def fail_parse(source_text, repo_relative_path):
+        raise AssertionError(f"cache hit should not parse {repo_relative_path}")
+
+    monkeypatch.setattr(symbol_index, "_parse_python_source", fail_parse)
+
+    cached = build_symbol_index(tmp_path, ("pkg/service.py",))
+
+    assert cached.index_snapshot_id == initial.index_snapshot_id
+    assert cached.definitions_by_file == {
+        "pkg/service.py": (
+            DefinitionRecord("build", "pkg/service.py", 0, "function"),
+        ),
+    }
+    assert cached.references_by_file == {
+        "pkg/service.py": (ReferenceRecord("helper", "pkg/service.py", 1),),
+    }
+
+
+def test_build_symbol_index_reparses_changed_files_and_reuses_unchanged_cache(
+    tmp_path: Path,
+    monkeypatch,
+):
+    first = tmp_path / "pkg" / "first.py"
+    second = tmp_path / "pkg" / "second.py"
+    first.parent.mkdir(parents=True)
+    first.write_text("def first():\n    return second()\n", encoding="utf-8")
+    second.write_text("def second():\n    return first()\n", encoding="utf-8")
+    build_symbol_index(tmp_path, ("pkg/first.py", "pkg/second.py"))
+    first.write_text(
+        "def first_changed():\n    return second()\n",
+        encoding="utf-8",
+    )
+    parsed_paths = []
+    original_parse = symbol_index._parse_python_source
+
+    def track_parse(source_text, repo_relative_path):
+        parsed_paths.append(repo_relative_path)
+        return original_parse(source_text, repo_relative_path)
+
+    monkeypatch.setattr(symbol_index, "_parse_python_source", track_parse)
+
+    index = build_symbol_index(tmp_path, ("pkg/first.py", "pkg/second.py"))
+
+    assert parsed_paths == ["pkg/first.py"]
+    assert index.definitions_by_file["pkg/first.py"] == (
+        DefinitionRecord("first_changed", "pkg/first.py", 0, "function"),
+    )
+    assert index.definitions_by_file["pkg/second.py"] == (
+        DefinitionRecord("second", "pkg/second.py", 0, "function"),
+    )
+
+
+def test_build_symbol_index_cache_write_failure_does_not_interrupt_index(
+    tmp_path: Path,
+):
+    (tmp_path / ".pico").write_text("not a directory", encoding="utf-8")
+    source = tmp_path / "pkg" / "service.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def build():\n    return helper()\n", encoding="utf-8")
+
+    index = build_symbol_index(tmp_path, ("pkg/service.py",))
+
+    assert index.all_defs == frozenset({"build"})
+    assert index.references_by_file == {
+        "pkg/service.py": (ReferenceRecord("helper", "pkg/service.py", 1),),
+    }
