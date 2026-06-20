@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from pico.features.map_engine.source_files import list_git_index_paths
+from pico.features.map_engine.source_files import (
+    SourceFileDiscoveryError,
+    list_git_index_paths,
+    list_python_source_files,
+)
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -100,3 +104,76 @@ def test_subdirectory_cwd_still_returns_repo_relative_paths(git_repo: Path):
         "pkg/subdir/module.py",
         "tracked.py",
     )
+
+
+def test_selects_existing_regular_python_files_from_git_index(git_repo: Path):
+    _write(git_repo, "pkg/new_file.py")
+    _git(git_repo, "add", "pkg/new_file.py")
+
+    selection = list_python_source_files(git_repo)
+
+    assert selection.source_paths == (
+        "pkg/new_file.py",
+        "tracked.py",
+    )
+    assert selection.skipped_files == ()
+
+
+def test_filters_non_python_and_missing_tracked_files(git_repo: Path):
+    _write(git_repo, "README.md", "# Demo\n")
+    _git(git_repo, "add", "README.md")
+    (git_repo / "tracked.py").unlink()
+
+    selection = list_python_source_files(git_repo)
+
+    assert selection.source_paths == ()
+    assert [(skip.path, skip.reason) for skip in selection.skipped_files] == [
+        ("README.md", "non_python"),
+        ("tracked.py", "missing"),
+    ]
+
+
+def test_filters_denylisted_tracked_python_files(git_repo: Path):
+    _write(git_repo, ".pico/cache.py")
+    _write(git_repo, ".venv/tool.py")
+    _write(git_repo, "__pycache__/cached.py")
+    _write(git_repo, "build/generated.py")
+    _write(git_repo, "src/app.py")
+    _git(
+        git_repo,
+        "add",
+        "-f",
+        ".pico/cache.py",
+        ".venv/tool.py",
+        "__pycache__/cached.py",
+        "build/generated.py",
+        "src/app.py",
+    )
+
+    selection = list_python_source_files(git_repo)
+
+    assert selection.source_paths == (
+        "src/app.py",
+        "tracked.py",
+    )
+    assert [(skip.path, skip.reason) for skip in selection.skipped_files] == [
+        (".pico/cache.py", "denylisted"),
+        (".venv/tool.py", "denylisted"),
+        ("__pycache__/cached.py", "denylisted"),
+        ("build/generated.py", "denylisted"),
+    ]
+
+
+def test_non_git_workspace_raises_without_recursive_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    (tmp_path / "untracked.py").write_text("value = 1\n", encoding="utf-8")
+
+    def fail_on_rglob(self, pattern):
+        raise AssertionError("filesystem recursion is not allowed")
+
+    monkeypatch.setattr(Path, "rglob", fail_on_rglob)
+
+    with pytest.raises(SourceFileDiscoveryError, match="Git source file discovery failed"):
+        list_python_source_files(tmp_path)
