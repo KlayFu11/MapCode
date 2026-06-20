@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F2-01 实现 Git tracked/staged 文件枚举`
+- 下一可执行任务：`V1-F2-02 实现 Python-only、denylist 和非 Git 降级`
 
 ## 阶段 0：固定施工地基
 
@@ -35,7 +35,7 @@
 
 ## 阶段 2：Git Python 索引与缓存
 
-- [ ] V1-F2-01 实现 Git tracked/staged 文件枚举 (P0, 依赖 V1-F1-10)
+- [x] V1-F2-01 实现 Git tracked/staged 文件枚举 (P0, 依赖 V1-F1-10)
 - [ ] V1-F2-02 实现 Python-only、denylist 和非 Git 降级 (P0, 依赖 V1-F2-01)
 - [ ] V1-F2-03 使用 tree-sitter query 提取 definitions (P0, 依赖 V1-F2-02)
 - [ ] V1-F2-04 提取 references 并隔离单文件失败 (P0, 依赖 V1-F2-03)
