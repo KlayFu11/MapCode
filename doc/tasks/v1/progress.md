@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F2-07 实现版本失效、文件变化与 cache 失败 evidence`
+- 下一可执行任务：`V1-F3-02 实现文件匹配、path ident 与 Branch 判断`
 
 ## 阶段 0：固定施工地基
 
@@ -41,11 +41,11 @@
 - [x] V1-F2-04 提取 references 并隔离单文件失败 (P0, 依赖 V1-F2-03)
 - [x] V1-F2-05 构建 SymbolIndex 和稳定 snapshot id (P0, 依赖 V1-F2-04)
 - [x] V1-F2-06 实现 index/cache 读取与 cache hit (P0, 依赖 V1-F2-05)
-- [ ] V1-F2-07 实现版本失效、文件变化与 cache 失败 evidence (P0, 依赖 V1-F2-06)
+- [x] V1-F2-07 实现版本失效、文件变化与 cache 失败 evidence (P0, 依赖 V1-F2-06)
 
 ## 阶段 3：确定性 MapEngine
 
-- [ ] V1-F3-01 实现 PromptAnalyzer identifier 与 symbol hit 提取 (P0, 依赖 V1-F2-07)
+- [x] V1-F3-01 实现 PromptAnalyzer identifier 与 symbol hit 提取 (P0, 依赖 V1-F2-07)
 - [ ] V1-F3-02 实现文件匹配、path ident 与 Branch 判断 (P0, 依赖 V1-F3-01)
 - [ ] V1-F3-03 构建文件级 def/ref 图和稳定 fallback (P0, 依赖 V1-F3-02)
 - [ ] V1-F3-04 实现 broad PageRank、Aider-style multiplier 与 ranking evidence (P0, 依赖 V1-F3-03)
@@ -139,6 +139,6 @@
 
 ## 最近执行
 
-- 日期：2026-06-17
-- 执行任务：阶段 0 收尾审查与进度标记。
-- 结果：`V1-F0-05` 至 `V1-F0-08` 已由用户完成 commit，并在 macOS 主开发环境通过依赖实验、Pico baseline 和 Ruff 验证；`aider/`、`pico_origin/`、`.venv/`、`.pico/` 均保持忽略，且 `aider/`、`pico_origin/` 已不再被 Git 跟踪。阶段 0 已标记完成；尚未进入 `V1-F1-01`。
+- 日期：2026-06-21
+- 执行任务：`V1-F3-01 实现 PromptAnalyzer identifier 与 symbol hit 提取`。
+- 结果：`V1-F2-07` 已由 HEAD `37471c5` 实现并经阶段 2 focused gate 复验通过，本次同步进度账本；`V1-F3-01` 新增 deterministic identifier 与 effective symbol hit 提取，目标 pytest、Ruff、架构边界和 `git diff --check` 均通过。下一可执行任务为 `V1-F3-02`。
