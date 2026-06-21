@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F3-02 实现文件匹配、path ident 与 Branch 判断`
+- 下一可执行任务：`V1-F3-03 构建文件级 def/ref 图和稳定 fallback`
 
 ## 阶段 0：固定施工地基
 
@@ -46,7 +46,7 @@
 ## 阶段 3：确定性 MapEngine
 
 - [x] V1-F3-01 实现 PromptAnalyzer identifier 与 symbol hit 提取 (P0, 依赖 V1-F2-07)
-- [ ] V1-F3-02 实现文件匹配、path ident 与 Branch 判断 (P0, 依赖 V1-F3-01)
+- [x] V1-F3-02 实现文件匹配、path ident 与 Branch 判断 (P0, 依赖 V1-F3-01)
 - [ ] V1-F3-03 构建文件级 def/ref 图和稳定 fallback (P0, 依赖 V1-F3-02)
 - [ ] V1-F3-04 实现 broad PageRank、Aider-style multiplier 与 ranking evidence (P0, 依赖 V1-F3-03)
 - [ ] V1-F3-05 实现 focus/path personalization、PPR 与 outbound boost (P0, 依赖 V1-F3-04)
@@ -140,5 +140,5 @@
 ## 最近执行
 
 - 日期：2026-06-21
-- 执行任务：`V1-F3-01 实现 PromptAnalyzer identifier 与 symbol hit 提取`。
-- 结果：`V1-F2-07` 已由 HEAD `37471c5` 实现并经阶段 2 focused gate 复验通过，本次同步进度账本；`V1-F3-01` 新增 deterministic identifier 与 effective symbol hit 提取，目标 pytest、Ruff、架构边界和 `git diff --check` 均通过。下一可执行任务为 `V1-F3-02`。
+- 执行任务：`V1-F3-02 实现文件匹配、path ident 与 Branch 判断`。
+- 结果：`V1-F3-02` 新增 PromptAnalyzer 准确文件匹配、path-ident matching、`PromptAnalysis` branch 判断；目标 pytest、Ruff、架构边界和 `git diff --check` 均通过。下一可执行任务为 `V1-F3-03`。
