@@ -3,6 +3,7 @@ from math import sqrt
 import pytest
 
 from pico.features.map_engine import graph_ranker
+from pico.features.map_engine.config import FOCUS_OUTBOUND_BOOST
 from pico.features.map_engine.config import TOP_RANKED_FILES_LIMIT
 from pico.features.map_engine.graph_ranker import (
     build_file_reference_graph,
@@ -185,6 +186,16 @@ def test_stable_path_fallback_sorts_symbol_index_file_records():
 def _edge_by_identifier(result, identifier: str):
     matches = [
         edge for edge in result.reference_graph.edges if edge.identifier == identifier
+    ]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _edge_by_source_identifier(result, source_path: str, identifier: str):
+    matches = [
+        edge
+        for edge in result.reference_graph.edges
+        if edge.source_path == source_path and edge.identifier == identifier
     ]
     assert len(matches) == 1
     return matches[0]
@@ -463,6 +474,185 @@ def test_rank_broad_records_top_rank_contributors():
         pytest.approx(1.0),
         pytest.approx(1.0),
     )
+
+
+def test_rank_focused_filters_focus_personalization_files_in_input_order():
+    symbol_index = _symbol_index(
+        paths=("focus_a.py", "focus_b.py", "missing.py", "target.py"),
+        definitions_by_symbol={"target": (_definition("target", "target.py"),)},
+        references_by_file={
+            "focus_a.py": (_reference("target", "focus_a.py"),),
+            "focus_b.py": (_reference("target", "focus_b.py"),),
+        },
+    )
+
+    result = graph_ranker.rank_focused(
+        symbol_index,
+        focus_fnames=("missing.py", "focus_b.py", "focus_a.py", "focus_b.py"),
+    )
+
+    assert result.ranking.algorithm == "personalized_pagerank"
+    assert result.ranking.focus_fnames == (
+        "missing.py",
+        "focus_b.py",
+        "focus_a.py",
+    )
+    assert result.ranking.focus_personalization_files == (
+        "focus_b.py",
+        "focus_a.py",
+    )
+    assert result.ranking.path_personalization_files == ()
+    assert result.ranking.personalization_files == ("focus_b.py", "focus_a.py")
+
+
+def test_rank_focused_records_focus_outbound_boost_on_focus_source_edges():
+    symbol_index = _symbol_index(
+        paths=("focus.py", "plain.py", "target.py"),
+        definitions_by_symbol={"target": (_definition("target", "target.py"),)},
+        references_by_file={
+            "focus.py": (_reference("target", "focus.py"),),
+            "plain.py": (_reference("target", "plain.py"),),
+        },
+    )
+
+    result = graph_ranker.rank_focused(
+        symbol_index,
+        focus_fnames=("focus.py",),
+        ident_boost_inputs=("target",),
+    )
+
+    focus_edge = _edge_by_source_identifier(result, "focus.py", "target")
+    plain_edge = _edge_by_source_identifier(result, "plain.py", "target")
+    assert focus_edge.weight == pytest.approx(10.0 * FOCUS_OUTBOUND_BOOST)
+    assert focus_edge.weight_multiplier == pytest.approx(10.0 * FOCUS_OUTBOUND_BOOST)
+    assert focus_edge.weight_reason_codes == (
+        "prompt_ident_boost",
+        "focus_outbound_boost",
+    )
+    assert plain_edge.weight == pytest.approx(10.0)
+    assert plain_edge.weight_multiplier == pytest.approx(10.0)
+    assert plain_edge.weight_reason_codes == ("prompt_ident_boost",)
+
+    target_contributors = _ranked_file(result, "target.py").top_rank_contributors
+    focus_contributor = next(
+        contributor
+        for contributor in target_contributors
+        if contributor.source_path == "focus.py"
+    )
+    assert focus_contributor.weight_multiplier == pytest.approx(
+        10.0 * FOCUS_OUTBOUND_BOOST
+    )
+    assert focus_contributor.weight_reason_codes == (
+        "prompt_ident_boost",
+        "focus_outbound_boost",
+    )
+
+
+def test_rank_focused_path_ident_only_uses_ppr_without_outbound_boost():
+    symbol_index = _symbol_index(
+        paths=("pkg/a.py", "pkg/b.py", "pkg/standalone.py", "target.py"),
+        definitions_by_symbol={"target": (_definition("target", "target.py"),)},
+        references_by_file={
+            "pkg/a.py": (_reference("target", "pkg/a.py"),),
+            "pkg/b.py": (_reference("target", "pkg/b.py"),),
+        },
+    )
+
+    result = graph_ranker.rank_focused(
+        symbol_index,
+        path_ident_hit_files={
+            "pkg": ("pkg/a.py", "pkg/b.py", "pkg/standalone.py"),
+        },
+    )
+
+    assert result.ranking.algorithm == "personalized_pagerank"
+    assert result.ranking.focus_fnames == ()
+    assert result.ranking.focus_personalization_files == ()
+    assert result.ranking.path_personalization_files == ("pkg/a.py", "pkg/b.py")
+    assert result.ranking.personalization_files == ("pkg/a.py", "pkg/b.py")
+    assert all(
+        edge.weight == pytest.approx(1.0)
+        and edge.weight_multiplier == pytest.approx(1.0)
+        and "focus_outbound_boost" not in edge.weight_reason_codes
+        for edge in result.reference_graph.edges
+    )
+    assert all(
+        "focus_outbound_boost" not in contributor.weight_reason_codes
+        for score in result.ranked_files
+        for contributor in score.top_rank_contributors
+    )
+
+
+def test_rank_focused_combines_focus_and_path_contributions_before_ppr(monkeypatch):
+    pagerank_calls = []
+
+    def fake_pagerank(graph, **kwargs):
+        pagerank_calls.append(kwargs)
+        return {path: 1.0 for path in graph.nodes}
+
+    monkeypatch.setattr(graph_ranker.nx, "pagerank", fake_pagerank)
+    symbol_index = _symbol_index(
+        paths=("shared.py", "path_only.py", "target.py"),
+        definitions_by_symbol={"target": (_definition("target", "target.py"),)},
+        references_by_file={
+            "shared.py": (_reference("target", "shared.py"),),
+            "path_only.py": (_reference("target", "path_only.py"),),
+        },
+    )
+
+    result = graph_ranker.rank_focused(
+        symbol_index,
+        focus_fnames=("shared.py",),
+        path_ident_hit_files={
+            "pkg": ("path_only.py", "shared.py"),
+        },
+    )
+
+    assert result.ranking.personalization_files == ("shared.py", "path_only.py")
+    assert len(pagerank_calls) == 1
+    assert pagerank_calls[0]["personalization"] == {
+        "shared.py": pytest.approx(2 / 3),
+        "path_only.py": pytest.approx(1 / 3),
+    }
+
+
+def test_rank_focused_without_valid_personalization_uses_standard_pagerank(
+    monkeypatch,
+):
+    pagerank_calls = []
+
+    def fake_pagerank(graph, **kwargs):
+        pagerank_calls.append(kwargs)
+        return {path: 1.0 for path in graph.nodes}
+
+    monkeypatch.setattr(graph_ranker.nx, "pagerank", fake_pagerank)
+    symbol_index = _symbol_index(
+        paths=("source.py", "target.py", "missing.py"),
+        definitions_by_symbol={"target": (_definition("target", "target.py"),)},
+        references_by_file={
+            "source.py": (_reference("target", "source.py"),),
+        },
+    )
+
+    result = graph_ranker.rank_focused(
+        symbol_index,
+        focus_fnames=("missing.py",),
+        path_ident_hit_files={
+            "missing": ("missing.py",),
+        },
+        ident_boost_inputs=("target",),
+    )
+
+    assert result.ranking.algorithm == "pagerank"
+    assert result.ranking.focus_fnames == ("missing.py",)
+    assert result.ranking.focus_personalization_files == ()
+    assert result.ranking.path_personalization_files == ()
+    assert result.ranking.personalization_files == ()
+    assert len(pagerank_calls) == 1
+    assert pagerank_calls[0]["personalization"] is None
+    edge = _edge_by_source_identifier(result, "source.py", "target")
+    assert edge.weight == pytest.approx(10.0)
+    assert edge.weight_reason_codes == ("prompt_ident_boost",)
 
 
 def test_rank_broad_empty_graph_uses_stable_path_fallback_without_self_loop():
