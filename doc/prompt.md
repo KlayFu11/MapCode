@@ -20,7 +20,7 @@
 
 每次实现任务开始前必须读取：
 
-1. `AGENT.md`，或阶段 0 统一后的唯一规则入口。
+1. `AGENTS.md`，或阶段 0 统一后的唯一规则入口。
 2. 根目录当前活动事实文档：
    - `PRD_v1_2.md`
    - `SPEC_v1_4.md`
@@ -78,6 +78,54 @@ SPEC > PRD > FuncFlow > doc/tasks > 当前 .planning > 聊天记录
 8. 将稳定任务、设计或进度变化折叠进项目级文档。
 9. 向用户提交任务审查材料。
 10. 用户审查通过后才允许 commit 和勾选项目总进度。
+
+## Multi_Agent mode（显式启用）
+
+只有当前用户 Prompt 明确要求“使用多 Agent 执行本次阶段施工”或明确指定 `Multi_Agent mode` 时，才启用本模式。仅讨论、设计、审查或修改多 Agent 规则，不视为启用。
+
+未启用时，完整遵守原有单 Agent 执行顺序、普通子 Agent 规则和逐任务人工 commit gate。启用后，本节只覆盖以下两项默认规则：
+
+1. 主 Agent 从“每次只执行一个任务”改为“每个会话在同一 `V1-F<n>` 阶段中串行执行正常目标 2 个、最多 3 个任务”。
+2. commit 与进度更新从“每个任务等待用户批准”改为“reviewer `PASS` 且主 Agent 最终 gate 通过后，允许更新进度并执行单任务 commit，用户在本轮阶段批结束后批量审查”。
+
+其余事实优先级、Pico/Aider 边界、任务允许路径、测试、失败回退、禁止 push 等规则保持不变。
+
+### 主 Agent / coordinator 边界
+
+- 当前会话的主 Agent 直接担任 coordinator，不创建额外 coordinator Agent。
+- 每个会话只处理一个 `V1-F<n>` 阶段，只能按 `doc/tasks/v1/progress.md` 和任务依赖顺序串行施工。
+- 正常目标是完成 2 个任务，本轮上限是 3 个；阶段完成、context 不足或任一 gate 失败时允许提前停止。
+- 主 Agent 使用 planning-with-files 维护每个任务的 `task_plan.md`、`findings.md`、`progress.md`，并负责把子 Agent 返回的内容写入 `plan.md`、`worker-summary.md`、`review.md` 和 `handoff.md`。
+- explorer、worker 和 reviewer 只执行主 Agent 派发的当前任务，不得调用 planning-with-files 创建执行文件。
+
+### 每个任务启动前检查
+
+主 Agent 必须在启动每个新任务前检查：
+
+- `git status --short --branch`。
+- 当前任务在 `doc/tasks/v1/progress.md` 中仍未完成。
+- 当前任务的所有依赖已完成。
+- 运行时可见的 context left 不低于 45%。
+
+context left 低于 45% 时，停止启动新任务并输出下一会话恢复 Prompt。如果运行时未提供可靠的 context left，不得猜测；按“无法判断是否安全”停止启动下一任务。
+
+### 单任务固定流程
+
+1. 主 Agent 创建 `.planning/{YYYY-MM-DD}-{task-id-lowercase}-{task-slug}/`，初始化 planning-with-files 标准三文件。
+2. 启动只读 explorer：读取任务文档、SPEC、PRD、FuncFlow 和相关代码，返回任务边界、修改/创建文件、变量/类型、验证命令和风险；主 Agent 写入 `plan.md`。
+3. 主 Agent 审查 explorer plan；只有计划严格属于单任务边界时才继续。
+4. 启动 worker：worker 只允许修改 explorer plan 列出的路径，不得修改 `doc/tasks/v1/progress.md`，不得 commit；主 Agent 将返回内容写入 `worker-summary.md`。
+5. 启动 reviewer：审查 `git diff`，执行任务规定的验证命令，检查 SPEC、`AGENTS.md`、`doc/prompt.md` 和允许路径；reviewer 只能返回 `PASS` 或 `FAIL`，不得修改文件或 commit，主 Agent 写入 `review.md`。
+6. 主 Agent 执行最终 gate：重跑必要的最小验证命令，检查 `git diff --check`、`git status --short --branch` 和实际修改路径。
+7. reviewer `PASS` 且主 Agent gate 通过后，主 Agent 更新 `doc/tasks/v1/progress.md` 对应任务，生成 `handoff.md`，将实现变更与进度勾选放入同一个 commit。commit message 必须包含完整 `TASK_ID`；commit 成功后将 commit hash 追加到 `handoff.md`。
+8. commit 成功后才可以检查并启动下一个依赖已满足的任务。
+
+### 停止与批量审查
+
+- 测试失败、依赖不满足、SPEC 冲突、未预期 diff、路径越界、commit 失败或无法判断是否安全时，立即停止，不启动下一任务。未通过双 gate 的任务不得 commit。
+- 完成 3 个任务、当前阶段完成、context 不足或任一 gate 失败时，结束本轮。
+- 结束时按“每次任务审查交付”格式汇总每个已完成任务的 explorer plan、worker summary、reviewer 结论、主 Agent gate、commit hash 和未提交改动，由用户做阶段批量审查。
+- 本模式只允许按上述 gate 自动 commit，不允许自动 push、merge、rebase 或创建 PR。
 
 ## 模块拆分与行数门禁原则
 
