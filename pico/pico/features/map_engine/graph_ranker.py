@@ -14,6 +14,7 @@ from pico.features.map_engine.config import PAGERANK_MAX_ITER
 from pico.features.map_engine.config import PAGERANK_TOL
 from pico.features.map_engine.config import RANKING_POLICY_VERSION
 from pico.features.map_engine.config import TOP_RANKED_FILES_LIMIT
+from pico.features.map_engine.context_renderer import focused_definition_candidates
 from pico.features.map_engine.evidence import symbol_weight_multiplier
 from pico.features.map_engine.models import DefinitionRecord
 from pico.features.map_engine.models import RankContributorEvidence
@@ -171,6 +172,7 @@ def rank_focused(
     focus_fnames: tuple[str, ...] = (),
     path_ident_hit_files: Mapping[str, tuple[str, ...]] | None = None,
     ident_boost_inputs: tuple[str, ...] = (),
+    effective_symbol_hits: tuple[str, ...] = (),
 ) -> GraphRankingResult:
     focus_fnames = _stable_unique_paths(focus_fnames)
     reference_graph = build_file_reference_graph(
@@ -203,6 +205,7 @@ def rank_focused(
             focus_personalization_files=focus_personalization_files,
             path_personalization_files=path_personalization_files,
             personalization_files=personalization_files,
+            effective_symbol_hits=effective_symbol_hits,
         )
 
     try:
@@ -223,6 +226,7 @@ def rank_focused(
             focus_personalization_files=focus_personalization_files,
             path_personalization_files=path_personalization_files,
             personalization_files=personalization_files,
+            effective_symbol_hits=effective_symbol_hits,
         )
 
     definition_group_ranks = _definition_group_ranks(
@@ -256,7 +260,11 @@ def rank_focused(
         reference_graph=reference_graph,
         ranking=ranking,
         ranked_files=ranked_files,
-        ranked_definitions=_ranked_definitions(symbol_index, definition_group_ranks),
+        ranked_definitions=focused_definition_candidates(
+            _ranked_definitions(symbol_index, definition_group_ranks),
+            symbol_index.definitions_by_symbol,
+            effective_symbol_hits=effective_symbol_hits,
+        ),
     )
 
 
@@ -298,6 +306,7 @@ def _stable_fallback_result(
     focus_personalization_files: tuple[str, ...] = (),
     path_personalization_files: tuple[str, ...] = (),
     personalization_files: tuple[str, ...] = (),
+    effective_symbol_hits: tuple[str, ...] = (),
 ) -> GraphRankingResult:
     ranked_files = tuple(
         RankedFileScore(
@@ -324,7 +333,11 @@ def _stable_fallback_result(
         reference_graph=reference_graph,
         ranking=ranking,
         ranked_files=ranked_files,
-        ranked_definitions=_ranked_definitions(symbol_index, {}),
+        ranked_definitions=focused_definition_candidates(
+            _ranked_definitions(symbol_index, {}),
+            symbol_index.definitions_by_symbol,
+            effective_symbol_hits=effective_symbol_hits,
+        ),
     )
 
 

@@ -655,6 +655,90 @@ def test_rank_focused_without_valid_personalization_uses_standard_pagerank(
     assert edge.weight_reason_codes == ("prompt_ident_boost",)
 
 
+def test_rank_focused_effective_symbol_hits_prefix_unreferenced_definition():
+    symbol_index = _symbol_index(
+        paths=("source.py", "target.py", "zz_hit.py"),
+        definitions_by_symbol={
+            "target": (_definition("target", "target.py"),),
+            "hit": (_definition("hit", "zz_hit.py"),),
+        },
+        references_by_file={
+            "source.py": (_reference("target", "source.py"),),
+        },
+    )
+
+    baseline = graph_ranker.rank_focused(symbol_index)
+    result = graph_ranker.rank_focused(
+        symbol_index,
+        effective_symbol_hits=("hit",),
+    )
+
+    assert baseline.ranked_definitions[0].name == "target"
+    assert result.ranked_definitions[0].name == "hit"
+    assert result.ranking.algorithm == baseline.ranking.algorithm
+    assert result.ranking.top_ranked_files == baseline.ranking.top_ranked_files
+    assert tuple(score.path for score in result.ranked_files) == tuple(
+        score.path for score in baseline.ranked_files
+    )
+    for result_score, baseline_score in zip(result.ranked_files, baseline.ranked_files):
+        assert result_score.node_pagerank == pytest.approx(
+            baseline_score.node_pagerank
+        )
+        assert result_score.pagerank_norm == pytest.approx(
+            baseline_score.pagerank_norm
+        )
+        assert result_score.definition_rank_sum == pytest.approx(
+            baseline_score.definition_rank_sum
+        )
+        assert result_score.top_rank_contributors == baseline_score.top_rank_contributors
+
+
+def test_rank_focused_effective_symbol_hits_apply_to_stable_fallback():
+    symbol_index = _symbol_index(
+        paths=("a_other.py", "z_hit.py"),
+        definitions_by_symbol={
+            "other": (_definition("other", "a_other.py"),),
+            "hit": (_definition("hit", "z_hit.py"),),
+        },
+    )
+
+    result = graph_ranker.rank_focused(
+        symbol_index,
+        effective_symbol_hits=("hit",),
+    )
+
+    assert result.ranking.algorithm == "stable_path_fallback"
+    assert tuple(score.path for score in result.ranked_files) == (
+        "a_other.py",
+        "z_hit.py",
+    )
+    assert tuple(definition.name for definition in result.ranked_definitions) == (
+        "hit",
+        "other",
+    )
+
+
+def test_rank_focused_effective_symbol_hits_do_not_boost_edges():
+    symbol_index = _symbol_index(
+        paths=("source.py", "target.py"),
+        definitions_by_symbol={"target": (_definition("target", "target.py"),)},
+        references_by_file={
+            "source.py": (_reference("target", "source.py"),),
+        },
+    )
+
+    result = graph_ranker.rank_focused(
+        symbol_index,
+        effective_symbol_hits=("target",),
+    )
+
+    edge = _edge_by_source_identifier(result, "source.py", "target")
+    assert result.ranking.algorithm == "pagerank"
+    assert edge.weight == pytest.approx(1.0)
+    assert edge.weight_multiplier == pytest.approx(1.0)
+    assert edge.weight_reason_codes == ()
+
+
 def test_rank_broad_empty_graph_uses_stable_path_fallback_without_self_loop():
     symbol_index = _symbol_index(
         paths=("zeta.py", "alpha.py", "models.py"),

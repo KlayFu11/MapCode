@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F3-06 固定 effective_symbol_hits DefinitionRecord 候选前缀`
+- 下一可执行任务：`V1-F3-07 使用 TreeContext 渲染结构摘要`
 
 ## 阶段 0：固定施工地基
 
@@ -50,7 +50,7 @@
 - [x] V1-F3-03 构建文件级 def/ref 图和稳定 fallback (P0, 依赖 V1-F3-02)
 - [x] V1-F3-04 实现 broad PageRank、Aider-style multiplier 与 ranking evidence (P0, 依赖 V1-F3-03)
 - [x] V1-F3-05 实现 focus/path personalization、PPR 与 outbound boost (P0, 依赖 V1-F3-04)
-- [ ] V1-F3-06 固定 effective_symbol_hits DefinitionRecord 候选前缀 (P0, 依赖 V1-F3-05)
+- [x] V1-F3-06 固定 effective_symbol_hits DefinitionRecord 候选前缀 (P0, 依赖 V1-F3-05)
 - [ ] V1-F3-07 使用 TreeContext 渲染结构摘要 (P0, 依赖 V1-F3-06)
 - [ ] V1-F3-08 实现固定 focused/broad token budget 与 truncation (P0, 依赖 V1-F3-07)
 - [ ] V1-F3-09 从同一 snapshot 生成 SelectorCandidateCatalog (P0, 依赖 V1-F3-08)
@@ -140,5 +140,5 @@
 ## 最近执行
 
 - 日期：2026-06-22
-- 执行任务：`V1-F3-05 实现 focus/path personalization、PPR 与 outbound boost`。
-- 结果：`V1-F3-05` 新增 focused ranking、focus/path personalization、PPR 与 focus-only outbound boost evidence；目标 pytest、Ruff、reviewer 二轮审查和 `git diff --check` 均通过。下一可执行任务为 `V1-F3-06`。
+- 执行任务：`V1-F3-06 固定 effective_symbol_hits DefinitionRecord 候选前缀`。
+- 结果：`V1-F3-06` 新增 focused DefinitionRecord 候选前缀 helper，并在 focused ranking 成功与 fallback 路径应用 effective symbol hit 前缀；目标 pytest、Ruff、reviewer 审查和 `git diff --check` 均通过。本轮按要求停止，不启动 `V1-F3-07`。
