@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F3-10 实现 MapEngine 公共接口和 lazy index`
+- 下一可执行任务：`V1-F3-11 增加离线 MapEngine fixture 演示`
 
 ## 阶段 0：固定施工地基
 
@@ -54,7 +54,7 @@
 - [x] V1-F3-07 使用 TreeContext 渲染结构摘要 (P0, 依赖 V1-F3-06)
 - [x] V1-F3-08 实现固定 focused/broad token budget 与 truncation (P0, 依赖 V1-F3-07)
 - [x] V1-F3-09 从同一 snapshot 生成 SelectorCandidateCatalog (P0, 依赖 V1-F3-08)
-- [ ] V1-F3-10 实现 MapEngine 公共接口和 lazy index (P0, 依赖 V1-F3-09)
+- [x] V1-F3-10 实现 MapEngine 公共接口和 lazy index (P0, 依赖 V1-F3-09)
 - [ ] V1-F3-11 增加离线 MapEngine fixture 演示 (P0, 依赖 V1-F3-10)
 
 ## 阶段 4：Pico Runtime 基础接入
