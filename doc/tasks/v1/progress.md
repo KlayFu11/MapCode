@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F3-08 实现固定 focused/broad token budget 与 truncation`
+- 下一可执行任务：`V1-F3-09 从同一 snapshot 生成 SelectorCandidateCatalog`
 
 ## 阶段 0：固定施工地基
 
@@ -52,7 +52,7 @@
 - [x] V1-F3-05 实现 focus/path personalization、PPR 与 outbound boost (P0, 依赖 V1-F3-04)
 - [x] V1-F3-06 固定 effective_symbol_hits DefinitionRecord 候选前缀 (P0, 依赖 V1-F3-05)
 - [x] V1-F3-07 使用 TreeContext 渲染结构摘要 (P0, 依赖 V1-F3-06)
-- [ ] V1-F3-08 实现固定 focused/broad token budget 与 truncation (P0, 依赖 V1-F3-07)
+- [x] V1-F3-08 实现固定 focused/broad token budget 与 truncation (P0, 依赖 V1-F3-07)
 - [ ] V1-F3-09 从同一 snapshot 生成 SelectorCandidateCatalog (P0, 依赖 V1-F3-08)
 - [ ] V1-F3-10 实现 MapEngine 公共接口和 lazy index (P0, 依赖 V1-F3-09)
 - [ ] V1-F3-11 增加离线 MapEngine fixture 演示 (P0, 依赖 V1-F3-10)
@@ -140,5 +140,5 @@
 ## 最近执行
 
 - 日期：2026-06-23
-- 执行任务：`V1-F3-07 使用 TreeContext 渲染结构摘要`。
-- 结果：`V1-F3-07` 新增 ranked context renderer，按文件级排序输出 TreeContext 风格结构摘要，保留 path-only fallback、rendered symbols、file-level prompt symbol hits 与 path-ident 反向投影 evidence；目标 pytest、相关回归、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F3-08`。
+- 执行任务：`V1-F3-08 实现固定 focused/broad token budget 与 truncation`。
+- 结果：`V1-F3-08` 为 ranked context renderer 增加 fixed focused/broad budget、完整 file block 裁剪、path-only fallback、budget omitted evidence 与 `RenderingEvidence`；目标 pytest、相关回归、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F3-09`。

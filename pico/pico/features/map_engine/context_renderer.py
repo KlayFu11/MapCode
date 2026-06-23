@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
+from typing import Literal
 from typing import Protocol
 
 from grep_ast import TreeContext
 
+from pico.features.map_engine.config import BROAD_MAP_BUDGET_TOKENS
+from pico.features.map_engine.config import FOCUSED_MAP_BUDGET_TOKENS
 from pico.features.map_engine.models import DefinitionRecord
 from pico.features.map_engine.models import OmittedFileEvidence
 from pico.features.map_engine.models import PromptAnalysis
 from pico.features.map_engine.models import RankContributorEvidence
+from pico.features.map_engine.models import RenderingEvidence
 from pico.features.map_engine.models import RenderedFileEvidence
 
 
@@ -30,6 +35,7 @@ class RankedContextRender:
     rendered_files: tuple[RenderedFileEvidence, ...]
     omitted_files: tuple[OmittedFileEvidence, ...]
     rendered_symbols: tuple[str, ...]
+    rendering: RenderingEvidence
 
 
 def focused_definition_candidates(
@@ -64,17 +70,25 @@ def render_ranked_context(
     *,
     source_by_path: Mapping[str, str] | None = None,
     repo_root: str | Path | None = None,
+    mode: Literal["focused", "broad"] = "focused",
+    focus_fnames: tuple[str, ...] = (),
     omitted_files: tuple[RankedFileScoreLike, ...] = (),
     omission_reason: str = "not_rendered",
 ) -> RankedContextRender:
+    target_tokens = _target_tokens_for_mode(mode)
+    target_chars = target_tokens * 4
     definitions_by_render_path = _definitions_by_render_path(
         ranked_definitions,
     )
     rendered_file_evidence = []
     rendered_symbol_names = []
+    rendered_symbols_by_path = {}
+    budget_omitted_files = []
+    budget_path_only_fallback_applied = False
     blocks = []
+    used_chars = 0
 
-    for render_rank, score in enumerate(ranked_files, start=1):
+    for score in ranked_files:
         rendered_body, rendered_definitions = _render_file_body(
             score.path,
             definitions_by_render_path.get(score.path, ()),
@@ -82,8 +96,22 @@ def render_ranked_context(
             repo_root=repo_root,
         )
         symbols = _unique_symbols(rendered_definitions)
+        block = _format_file_block(score.path, rendered_body)
+        next_used_chars = _projected_used_chars(used_chars, bool(blocks), block)
+        if next_used_chars > target_chars:
+            block = _format_file_block(score.path, "")
+            next_used_chars = _projected_used_chars(used_chars, bool(blocks), block)
+            if next_used_chars > target_chars:
+                budget_omitted_files.append(score)
+                continue
+            symbols = ()
+            budget_path_only_fallback_applied = True
+
+        render_rank = len(rendered_file_evidence) + 1
+        used_chars = next_used_chars
+        blocks.append(block)
         rendered_symbol_names.extend(symbols)
-        blocks.append(_format_file_block(score.path, rendered_body))
+        rendered_symbols_by_path[score.path] = symbols
         rendered_file_evidence.append(
             _rendered_file_evidence(
                 score,
@@ -94,7 +122,7 @@ def render_ranked_context(
             )
         )
 
-    omitted_file_evidence = tuple(
+    explicit_omitted_file_evidence = tuple(
         _omitted_file_evidence(
             score,
             omission_reason,
@@ -103,13 +131,71 @@ def render_ranked_context(
         )
         for score in omitted_files
     )
+    budget_omitted_file_evidence = tuple(
+        _omitted_file_evidence(
+            score,
+            "map_budget_exhausted",
+            definitions_by_file,
+            analysis,
+        )
+        for score in budget_omitted_files
+    )
+    repo_map_text = "\n".join(blocks)
 
     return RankedContextRender(
-        repo_map_text="\n".join(blocks),
+        repo_map_text=repo_map_text,
         rendered_files=tuple(rendered_file_evidence),
-        omitted_files=omitted_file_evidence,
+        omitted_files=explicit_omitted_file_evidence + budget_omitted_file_evidence,
         rendered_symbols=_stable_unique(rendered_symbol_names),
+        rendering=RenderingEvidence(
+            target_tokens=target_tokens,
+            target_chars=target_chars,
+            used_chars=len(repo_map_text),
+            estimated_tokens=_estimate_tokens(len(repo_map_text)),
+            budget_reduction_applied=bool(budget_omitted_files)
+            or budget_path_only_fallback_applied,
+            focus_truncated=_focus_truncated(
+                focus_fnames,
+                rendered_symbols_by_path,
+                definitions_by_render_path,
+            ),
+        ),
     )
+
+
+def _target_tokens_for_mode(mode: Literal["focused", "broad"]) -> int:
+    if mode == "focused":
+        return FOCUSED_MAP_BUDGET_TOKENS
+    if mode == "broad":
+        return BROAD_MAP_BUDGET_TOKENS
+    raise ValueError(f"unsupported render mode: {mode}")
+
+
+def _projected_used_chars(
+    used_chars: int,
+    has_blocks: bool,
+    block: str,
+) -> int:
+    separator_chars = 1 if has_blocks else 0
+    return used_chars + separator_chars + len(block)
+
+
+def _estimate_tokens(chars: int) -> int:
+    return ceil(chars / 4)
+
+
+def _focus_truncated(
+    focus_fnames: tuple[str, ...],
+    rendered_symbols_by_path: Mapping[str, tuple[str, ...]],
+    definitions_by_render_path: Mapping[str, tuple[DefinitionRecord, ...]],
+) -> bool:
+    for path in focus_fnames:
+        if path not in rendered_symbols_by_path:
+            return True
+        expected_symbols = _unique_symbols(definitions_by_render_path.get(path, ()))
+        if len(rendered_symbols_by_path[path]) < len(expected_symbols):
+            return True
+    return False
 
 
 def _definitions_by_render_path(

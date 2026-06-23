@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from pico.features.map_engine.config import BROAD_MAP_BUDGET_TOKENS
+from pico.features.map_engine.config import FOCUSED_MAP_BUDGET_TOKENS
 from pico.features.map_engine.context_renderer import focused_definition_candidates
 from pico.features.map_engine.context_renderer import render_ranked_context
 from pico.features.map_engine.models import DefinitionRecord
@@ -199,6 +201,126 @@ def test_render_ranked_context_records_prompt_symbol_hits_by_file():
     evidence = result.rendered_files[0]
     assert evidence.prompt_symbol_hits == ("Unrendered", "Service")
     assert evidence.rendered_symbols == ("Service",)
+
+
+def test_render_ranked_context_records_default_focused_rendering_evidence():
+    result = render_ranked_context(
+        ranked_files=(RankedFileScore("pkg/empty.py"),),
+        ranked_definitions=(),
+        definitions_by_file={},
+        analysis=_analysis(),
+        source_by_path={},
+    )
+
+    assert result.rendering.target_tokens == FOCUSED_MAP_BUDGET_TOKENS
+    assert result.rendering.target_chars == FOCUSED_MAP_BUDGET_TOKENS * 4
+    assert result.rendering.used_chars == len(result.repo_map_text)
+    assert result.rendering.estimated_tokens == (len(result.repo_map_text) + 3) // 4
+    assert result.rendering.budget_reduction_applied is False
+    assert result.rendering.focus_truncated is False
+
+
+def test_render_ranked_context_uses_broad_rendering_budget():
+    result = render_ranked_context(
+        ranked_files=(RankedFileScore("pkg/empty.py"),),
+        ranked_definitions=(),
+        definitions_by_file={},
+        analysis=_analysis(),
+        source_by_path={},
+        mode="broad",
+    )
+
+    assert result.rendering.target_tokens == BROAD_MAP_BUDGET_TOKENS
+    assert result.rendering.target_chars == BROAD_MAP_BUDGET_TOKENS * 4
+
+
+def test_render_ranked_context_omits_complete_blocks_after_budget_exhaustion():
+    target_chars = FOCUSED_MAP_BUDGET_TOKENS * 4
+    large_path = "a" * (target_chars - 3)
+    omitted_path = "pkg/omitted.py"
+    explicit_path = "pkg/explicit.py"
+
+    result = render_ranked_context(
+        ranked_files=(
+            RankedFileScore(large_path),
+            RankedFileScore(omitted_path, node_pagerank=0.2),
+        ),
+        ranked_definitions=(),
+        definitions_by_file={},
+        analysis=_analysis(),
+        source_by_path={},
+        omitted_files=(RankedFileScore(explicit_path, node_pagerank=0.1),),
+        omission_reason="not_rendered",
+    )
+
+    assert tuple(file.path for file in result.rendered_files) == (large_path,)
+    assert tuple(file.render_rank for file in result.rendered_files) == (1,)
+    assert result.repo_map_text == f"{large_path}:"
+    assert len(result.repo_map_text) == target_chars - 2
+    assert tuple(file.path for file in result.omitted_files) == (
+        explicit_path,
+        omitted_path,
+    )
+    assert tuple(file.omission_reason for file in result.omitted_files) == (
+        "not_rendered",
+        "map_budget_exhausted",
+    )
+    assert result.rendering.budget_reduction_applied is True
+    assert result.rendering.used_chars == len(result.repo_map_text)
+    assert result.rendering.estimated_tokens == (len(result.repo_map_text) + 3) // 4
+
+
+def test_render_ranked_context_falls_back_to_path_only_when_focus_block_exceeds_budget():
+    focus_path = "pkg/focus.py"
+    definitions = tuple(
+        _definition(f"func_{index}", focus_path, line=index * 3)
+        for index in range(700)
+    )
+    source = "\n".join(
+        f"def func_{index}():\n    return {index}\n"
+        for index in range(700)
+    )
+
+    result = render_ranked_context(
+        ranked_files=(RankedFileScore(focus_path),),
+        ranked_definitions=definitions,
+        definitions_by_file={focus_path: definitions},
+        analysis=_analysis(),
+        source_by_path={focus_path: source},
+        focus_fnames=(focus_path,),
+    )
+
+    assert result.repo_map_text == "pkg/focus.py:"
+    assert tuple(file.path for file in result.rendered_files) == (focus_path,)
+    assert result.rendered_files[0].render_rank == 1
+    assert result.rendered_files[0].rendered_symbols == ()
+    assert result.omitted_files == ()
+    assert result.rendered_symbols == ()
+    assert result.rendering.budget_reduction_applied is True
+    assert result.rendering.focus_truncated is True
+
+
+def test_render_ranked_context_marks_focus_truncated_when_focus_file_is_omitted():
+    target_chars = FOCUSED_MAP_BUDGET_TOKENS * 4
+    large_path = "a" * (target_chars - 3)
+    focus_path = "pkg/focus.py"
+
+    result = render_ranked_context(
+        ranked_files=(
+            RankedFileScore(large_path),
+            RankedFileScore(focus_path),
+        ),
+        ranked_definitions=(),
+        definitions_by_file={},
+        analysis=_analysis(),
+        source_by_path={},
+        focus_fnames=(focus_path,),
+    )
+
+    assert tuple(file.path for file in result.rendered_files) == (large_path,)
+    assert result.omitted_files[0].path == focus_path
+    assert result.omitted_files[0].omission_reason == "map_budget_exhausted"
+    assert result.rendering.focus_truncated is True
 
 
 def test_focused_definition_candidates_prefixes_exact_hits():
