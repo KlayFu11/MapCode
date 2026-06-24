@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..core.model_request_budget import (
+    DEFAULT_PROMPT_SAFETY_MARGIN_TOKENS,
+    FALLBACK_MODEL_INPUT_BUDGET_TOKENS,
+    MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+    ModelRequestBudget,
+)
 from ..features.sandbox import resolve_sandbox_config as resolve_sandbox_values
 
 if sys.version_info >= (3, 11):
@@ -22,6 +28,10 @@ PROJECT_CONFIG_NAME = ".pico.toml"
 DEFAULT_PROJECT_FEATURE_FLAGS = {
     "map_engine": False,
 }
+MODEL_REQUEST_BUDGET_FIELDS = (
+    "model_input_budget_tokens",
+    "prompt_safety_margin_tokens",
+)
 
 
 @dataclass(frozen=True)
@@ -308,6 +318,58 @@ def resolve_project_feature_flags(
     return values
 
 
+def resolve_model_request_budget(
+    provider_config: ProviderConfig,
+    *,
+    start: str | Path = ".",
+    config_path: str | None = None,
+    model_input_budget_tokens: int | None = None,
+    prompt_safety_margin_tokens: int | None = None,
+) -> ModelRequestBudget:
+    file_values = _load_config_values(start=start, explicit_path=config_path)
+    provider_name = normalize_provider_name(provider_config.name)
+    profile_values = _profile_values(file_values["providers"], provider_name)
+    values = {
+        "model_input_budget_tokens": FALLBACK_MODEL_INPUT_BUDGET_TOKENS,
+        "prompt_safety_margin_tokens": DEFAULT_PROMPT_SAFETY_MARGIN_TOKENS,
+    }
+    source = "fallback"
+
+    provider_budget = _budget_config_values(
+        profile_values,
+        f"providers.{provider_name}",
+    )
+    if provider_budget:
+        values.update(provider_budget)
+        source = "provider_model"
+
+    project_budget = _budget_config_values(
+        file_values.get("model_request_budget", {}),
+        "model_request_budget",
+    )
+    if project_budget:
+        values.update(project_budget)
+        source = "explicit"
+
+    cli_budget = {}
+    if model_input_budget_tokens is not None:
+        cli_budget["model_input_budget_tokens"] = model_input_budget_tokens
+    if prompt_safety_margin_tokens is not None:
+        cli_budget["prompt_safety_margin_tokens"] = prompt_safety_margin_tokens
+    if cli_budget:
+        values.update(cli_budget)
+        source = "explicit"
+
+    return ModelRequestBudget(
+        provider=provider_name,
+        model=provider_config.model,
+        model_input_budget_tokens=values["model_input_budget_tokens"],
+        prompt_safety_margin_tokens=values["prompt_safety_margin_tokens"],
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source=source,
+    )
+
+
 def normalize_provider_name(provider: str | None) -> str:
     normalized = (provider or DEFAULT_PROVIDER).strip().lower()
     return PROVIDER_ALIASES.get(normalized, normalized)
@@ -319,6 +381,7 @@ def _load_config_values(start: str | Path, explicit_path: str | None) -> dict[st
         "providers": {},
         "sandbox": {},
         "features": {},
+        "model_request_budget": {},
     }
     if explicit_path:
         _merge_config_values(
@@ -346,6 +409,7 @@ def _read_config_file(path: Path) -> dict[str, Any]:
         "providers": {},
         "sandbox": {},
         "features": {},
+        "model_request_budget": {},
     }
     if "provider" in data:
         values["top"]["provider"] = data["provider"]
@@ -364,6 +428,10 @@ def _read_config_file(path: Path) -> dict[str, Any]:
     if isinstance(features, dict):
         values["features"] = dict(features)
 
+    model_request_budget = data.get("model_request_budget", {})
+    if isinstance(model_request_budget, dict):
+        values["model_request_budget"] = dict(model_request_budget)
+
     for name in ("openai", "anthropic", "deepseek"):
         section = data.get(name, {})
         if isinstance(section, dict):
@@ -375,6 +443,7 @@ def _merge_config_values(target: dict[str, Any], incoming: dict[str, Any]) -> No
     target["top"].update(incoming.get("top", {}))
     target["sandbox"].update(incoming.get("sandbox", {}))
     target["features"].update(incoming.get("features", {}))
+    target["model_request_budget"].update(incoming.get("model_request_budget", {}))
     for name, section in incoming.get("providers", {}).items():
         target["providers"].setdefault(name, {}).update(section)
 
@@ -463,3 +532,17 @@ def _coerce_bool_config(field: str, value: Any) -> bool:
     if isinstance(value, bool):
         return value
     raise ValueError(f"{field} must be a boolean")
+
+
+def _budget_config_values(section: dict[str, Any], prefix: str) -> dict[str, int]:
+    values = {}
+    for field in MODEL_REQUEST_BUDGET_FIELDS:
+        if field in section:
+            values[field] = _coerce_int_config(f"{prefix}.{field}", section[field])
+    return values
+
+
+def _coerce_int_config(field: str, value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    raise ValueError(f"{field} must be an integer")

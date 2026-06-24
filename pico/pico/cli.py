@@ -21,6 +21,7 @@ from .config import (
     load_project_env,
     resolve_project_feature_flags,
     resolve_project_sandbox_config,
+    resolve_model_request_budget,
     resolve_provider_config,
 )
 from .features import skills as skillslib
@@ -185,6 +186,13 @@ def build_agent(args):
         model=getattr(args, "model", None),
         base_url=getattr(args, "base_url", None),
         api_key=getattr(args, "api_key", None),
+    )
+    resolve_model_request_budget(
+        provider_config,
+        start=workspace.repo_root,
+        config_path=getattr(args, "config", None),
+        model_input_budget_tokens=getattr(args, "model_input_budget_tokens", None),
+        prompt_safety_margin_tokens=getattr(args, "prompt_safety_margin_tokens", None),
     )
     model = _build_model_client(args)
 
@@ -364,6 +372,18 @@ def build_arg_parser():
         type=int,
         default=None,
         help="Maximum model output tokens per step. Defaults to a provider-aware value (anthropic 32000, openai/deepseek 8192).",
+    )
+    parser.add_argument(
+        "--model-input-budget-tokens",
+        type=int,
+        default=None,
+        help="Maximum model input tokens allowed for request budget gating.",
+    )
+    parser.add_argument(
+        "--prompt-safety-margin-tokens",
+        type=int,
+        default=None,
+        help="Safety margin subtracted from the model input budget before requests.",
     )
     parser.add_argument(
         "--temperature",

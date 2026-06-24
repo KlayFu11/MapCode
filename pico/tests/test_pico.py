@@ -748,6 +748,22 @@ def test_build_arg_parser_accepts_deepseek_provider(tmp_path):
     assert args.provider == "deepseek"
 
 
+def test_build_arg_parser_accepts_model_request_budget_overrides(tmp_path):
+    args = pico_pkg.build_arg_parser().parse_args(
+        [
+            "--cwd",
+            str(tmp_path),
+            "--model-input-budget-tokens",
+            "65536",
+            "--prompt-safety-margin-tokens",
+            "2048",
+        ]
+    )
+
+    assert args.model_input_budget_tokens == 65_536
+    assert args.prompt_safety_margin_tokens == 2_048
+
+
 def test_build_agent_disables_map_engine_by_default(tmp_path):
     args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
 
@@ -800,6 +816,24 @@ def test_build_agent_cli_map_engine_flags_override_project_toml(tmp_path):
             enabled_agent = pico_pkg.build_agent(enabled_args)
 
     assert enabled_agent.feature_enabled("map_engine") is True
+
+
+def test_build_agent_rejects_invalid_model_request_budget_cli_values(tmp_path):
+    args = pico_pkg.build_arg_parser().parse_args(
+        [
+            "--cwd",
+            str(tmp_path),
+            "--model-input-budget-tokens",
+            "1024",
+            "--prompt-safety-margin-tokens",
+            "1024",
+        ]
+    )
+
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch("pico.cli.OpenAICompatibleModelClient"):
+            with pytest.raises(ValueError, match="prompt_safety_margin_tokens"):
+                pico_pkg.build_agent(args)
 
 
 def test_build_agent_uses_anthropic_provider_and_openai_key_fallback(tmp_path):

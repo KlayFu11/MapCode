@@ -10,6 +10,7 @@ from pico.core.model_request_budget import (
     ModelRequestBudget,
     estimate_model_request_tokens,
 )
+from pico.config import ProviderConfig, resolve_model_request_budget
 
 
 def _budget(**overrides) -> ModelRequestBudget:
@@ -87,3 +88,124 @@ def test_request_over_budget_uses_estimated_tokens_plus_margin():
 def test_model_request_budget_rejects_invalid_gate_configuration(field, value, message):
     with pytest.raises(ValueError, match=message):
         _budget(**{field: value})
+
+
+def _provider(name="openai", model="gpt-test") -> ProviderConfig:
+    return ProviderConfig(
+        name=name,
+        protocol="openai",
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model=model,
+    )
+
+
+def test_resolve_model_request_budget_uses_fallback_for_unknown_provider_model(tmp_path):
+    budget = resolve_model_request_budget(
+        _provider(name="gateway", model="gateway-model"),
+        start=tmp_path,
+    )
+
+    assert budget.provider == "gateway"
+    assert budget.model == "gateway-model"
+    assert budget.model_input_budget_tokens == FALLBACK_MODEL_INPUT_BUDGET_TOKENS
+    assert budget.model_input_budget_tokens != DEFAULT_CONTEXT_WINDOW
+    assert budget.prompt_safety_margin_tokens == DEFAULT_PROMPT_SAFETY_MARGIN_TOKENS
+    assert budget.estimation_method == MODEL_REQUEST_TOKEN_ESTIMATION_METHOD
+    assert budget.source == "fallback"
+
+
+def test_resolve_model_request_budget_uses_provider_profile_values(tmp_path):
+    (tmp_path / ".pico.toml").write_text(
+        "\n".join(
+            [
+                "[providers.deepseek]",
+                'protocol = "anthropic"',
+                'model = "deepseek-v4-pro"',
+                "model_input_budget_tokens = 65536",
+                "prompt_safety_margin_tokens = 2048",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    budget = resolve_model_request_budget(
+        _provider(name="deepseek", model="deepseek-v4-pro"),
+        start=tmp_path,
+    )
+
+    assert budget.model_input_budget_tokens == 65_536
+    assert budget.prompt_safety_margin_tokens == 2_048
+    assert budget.source == "provider_model"
+
+
+def test_resolve_model_request_budget_project_section_overrides_provider_profile(tmp_path):
+    (tmp_path / ".pico.toml").write_text(
+        "\n".join(
+            [
+                "[model_request_budget]",
+                "model_input_budget_tokens = 98304",
+                "prompt_safety_margin_tokens = 4096",
+                "",
+                "[providers.deepseek]",
+                'protocol = "anthropic"',
+                'model = "deepseek-v4-pro"',
+                "model_input_budget_tokens = 65536",
+                "prompt_safety_margin_tokens = 2048",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    budget = resolve_model_request_budget(
+        _provider(name="deepseek", model="deepseek-v4-pro"),
+        start=tmp_path,
+    )
+
+    assert budget.model_input_budget_tokens == 98_304
+    assert budget.prompt_safety_margin_tokens == 4_096
+    assert budget.source == "explicit"
+
+
+def test_resolve_model_request_budget_cli_values_override_project_section(tmp_path):
+    (tmp_path / ".pico.toml").write_text(
+        "\n".join(
+            [
+                "[model_request_budget]",
+                "model_input_budget_tokens = 98304",
+                "prompt_safety_margin_tokens = 4096",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    budget = resolve_model_request_budget(
+        _provider(),
+        start=tmp_path,
+        model_input_budget_tokens=131_072,
+        prompt_safety_margin_tokens=8_192,
+    )
+
+    assert budget.model_input_budget_tokens == 131_072
+    assert budget.prompt_safety_margin_tokens == 8_192
+    assert budget.source == "explicit"
+
+
+def test_resolve_model_request_budget_rejects_invalid_explicit_config(tmp_path):
+    (tmp_path / ".pico.toml").write_text(
+        "\n".join(
+            [
+                "[model_request_budget]",
+                'model_input_budget_tokens = "large"',
+                "prompt_safety_margin_tokens = 1024",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="model_request_budget.model_input_budget_tokens"):
+        resolve_model_request_budget(_provider(), start=tmp_path)
