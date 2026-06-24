@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F4-03 Runtime 装配 MapEngine、预算对象和 current map`
+- 下一可执行任务：`V1-F4-04 child runtime 关闭 MapEngine 并保留预算`
 
 ## 阶段 0：固定施工地基
 
@@ -61,7 +61,7 @@
 
 - [x] V1-F4-01 增加 `.pico.toml [features]` 和 `--map-engine` (P0, 依赖 V1-F3-11)
 - [x] V1-F4-02 解析 ModelRequestBudget 配置契约 (P0, 依赖 V1-F4-01)
-- [ ] V1-F4-03 Runtime 装配 MapEngine、预算对象和 current map (P0, 依赖 V1-F4-02)
+- [x] V1-F4-03 Runtime 装配 MapEngine、预算对象和 current map (P0, 依赖 V1-F4-02)
 - [ ] V1-F4-04 child runtime 关闭 MapEngine 并保留预算 (P0, 依赖 V1-F4-03)
 - [ ] V1-F4-05 RunStore 增加原子 JSON artifact (P0, 依赖 V1-F4-03)
 - [ ] V1-F4-06 TaskState 增加 MapContext 与模型调用摘要 (P0, 依赖 V1-F4-03)
@@ -158,3 +158,7 @@
 - 日期：2026-06-24
 - 执行任务：`V1-F4-02 解析 ModelRequestBudget 配置契约`。
 - 结果：`V1-F4-02` 新增 CLI、`[model_request_budget]`、provider profile 与 fallback 的 `ModelRequestBudget` 解析契约，显式非法 budget/margin 在启动装配阶段失败，未知 provider/model 使用 32,768/1,024 fallback 且不复用 `DEFAULT_CONTEXT_WINDOW`；目标 pytest、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-03`。
+
+- 日期：2026-06-24
+- 执行任务：`V1-F4-03 Runtime 装配 MapEngine、预算对象和 current map`。
+- 结果：`V1-F4-03` 为 Pico runtime 装配 `model_request_budget`、`current_map_context=None`、feature-gated `MapEngine` 和最小 `MapContextCoordinator`，CLI 解析出的预算对象进入同一 runtime；启动阶段不调用 `ensure_index()`，不扫描、不解析、不排名、不生成 repo map；目标 pytest、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-04`。

@@ -10,6 +10,16 @@ from pico.features.map_engine.models import MapContextEvidence, MapResult, Promp
 
 if TYPE_CHECKING:
     from pico.core.map_context_prompt import PromptInjectionEvidence
+    from pico.core.run_store import RunStore
+    from pico.core.runtime import Pico
+    from pico.features.map_engine.engine import MapEngine
+
+
+@dataclass(frozen=True)
+class MapContextCoordinator:
+    runtime: "Pico"
+    map_engine: "MapEngine"
+    run_store: "RunStore"
 
 
 @dataclass(frozen=True)

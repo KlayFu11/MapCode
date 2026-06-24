@@ -187,7 +187,7 @@ def build_agent(args):
         base_url=getattr(args, "base_url", None),
         api_key=getattr(args, "api_key", None),
     )
-    resolve_model_request_budget(
+    model_request_budget = resolve_model_request_budget(
         provider_config,
         start=workspace.repo_root,
         config_path=getattr(args, "config", None),
@@ -241,6 +241,7 @@ def build_agent(args):
             sandbox_config=sandbox_config,
             ask_user_callback=ask_user_callback,
             feature_flags=feature_flags,
+            model_request_budget=model_request_budget,
         )
     return Pico(
         model_client=model,
@@ -258,6 +259,7 @@ def build_agent(args):
         sandbox_config=sandbox_config,
         ask_user_callback=ask_user_callback,
         feature_flags=feature_flags,
+        model_request_budget=model_request_budget,
     )
 
 

@@ -20,6 +20,13 @@ from .compact import CompactManager
 from .context_manager import ContextManager
 from .engine import Engine
 from . import model_output, tool_executor
+from .map_context import MapContextCoordinator
+from .model_request_budget import (
+    DEFAULT_PROMPT_SAFETY_MARGIN_TOKENS,
+    FALLBACK_MODEL_INPUT_BUDGET_TOKENS,
+    MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+    ModelRequestBudget,
+)
 from .plan_mode import PlanModeController
 from .permissions import PermissionChecker
 from .run_store import RunStore
@@ -35,6 +42,7 @@ from .tool_profiles import build_tool_profiles
 from .todo_ledger import TodoLedger
 from .turn_history import TurnHistoryBuilder
 from .worker_manager import WorkerManager
+from ..features.map_engine.engine import MapEngine
 from ..tools import registry as toolkit
 from .workspace import MAX_HISTORY, WorkspaceContext, clip, now
 
@@ -58,6 +66,7 @@ DEFAULT_FEATURE_FLAGS = {
     "relevant_memory": True,
     "context_reduction": True,
     "prompt_cache": True,
+    "map_engine": False,
 }
 CHECKPOINT_SCHEMA_VERSION = "phase1-v1"
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
@@ -76,6 +85,17 @@ class PromptPrefix:
     workspace_fingerprint: str
     tool_signature: str
     built_at: str
+
+
+def _fallback_model_request_budget(model_client):
+    return ModelRequestBudget(
+        provider=str(getattr(model_client, "provider", "runtime")),
+        model=str(getattr(model_client, "model", "")),
+        model_input_budget_tokens=FALLBACK_MODEL_INPUT_BUDGET_TOKENS,
+        prompt_safety_margin_tokens=DEFAULT_PROMPT_SAFETY_MARGIN_TOKENS,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="fallback",
+    )
 
 
 class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
@@ -104,6 +124,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         sandbox_config=None,
         ask_user_callback=None,
         allowed_tools=None,
+        model_request_budget=None,
     ):
         self.model_client = model_client
         self.model_client_factory = model_client_factory
@@ -139,6 +160,10 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             self.feature_flags.update(
                 {str(key): bool(value) for key, value in feature_flags.items()}
             )
+        self.model_request_budget = model_request_budget or _fallback_model_request_budget(
+            self.model_client
+        )
+        self.current_map_context = None
         self.memory_dir = self._resolve_memory_dir(memory_dir)
         memorylib.ensure_memory_dir(self.memory_dir)
         self.auto_dream = bool(auto_dream)
@@ -167,6 +192,23 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         ):
             self.session_event_bus.emit(
                 "session_started", {"workspace_root": workspace.repo_root}
+            )
+        self.map_engine = None
+        self.map_context_coordinator = None
+        if self.feature_enabled("map_engine"):
+            self.map_engine = MapEngine(self.root)
+            self.map_context_coordinator = MapContextCoordinator(
+                runtime=self,
+                map_engine=self.map_engine,
+                run_store=self.run_store,
+            )
+            self.session_event_bus.emit(
+                "map_engine_initialized",
+                {
+                    "enabled": True,
+                    "repo_root": str(self.root),
+                    "model_request_budget_source": self.model_request_budget.source,
+                },
             )
         self.plan_mode = PlanModeController(self)
         self.engine = Engine(self)

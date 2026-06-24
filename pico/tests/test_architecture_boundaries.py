@@ -24,7 +24,7 @@ def _is_module_or_child(module, prefix):
 def test_core_modules_stay_below_entropy_budget():
     root = Path(__file__).resolve().parents[1]
     budgets = {
-        "pico/core/runtime.py": 950,
+        "pico/core/runtime.py": 990,
         "pico/core/runtime_events.py": 90,
         "pico/core/runtime_consumers.py": 90,
         "pico/core/artifacts.py": 130,

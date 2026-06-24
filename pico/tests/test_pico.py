@@ -836,6 +836,28 @@ def test_build_agent_rejects_invalid_model_request_budget_cli_values(tmp_path):
                 pico_pkg.build_agent(args)
 
 
+def test_build_agent_attaches_resolved_model_request_budget(tmp_path):
+    args = pico_pkg.build_arg_parser().parse_args(
+        [
+            "--cwd",
+            str(tmp_path),
+            "--model-input-budget-tokens",
+            "65536",
+            "--prompt-safety-margin-tokens",
+            "2048",
+        ]
+    )
+
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch("pico.cli.OpenAICompatibleModelClient"):
+            agent = pico_pkg.build_agent(args)
+
+    assert agent.model_request_budget.provider == "openai"
+    assert agent.model_request_budget.model_input_budget_tokens == 65_536
+    assert agent.model_request_budget.prompt_safety_margin_tokens == 2_048
+    assert agent.model_request_budget.source == "explicit"
+
+
 def test_build_agent_uses_anthropic_provider_and_openai_key_fallback(tmp_path):
     args = type(
         "Args",
