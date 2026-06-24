@@ -4,6 +4,11 @@ import time
 
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.model_request_budget import (
+    MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+    ModelRequestBudget,
+)
+from pico.core.worker_runtime import build_child_runtime
 
 
 def build_agent(tmp_path, outputs, **kwargs):
@@ -59,6 +64,33 @@ def test_delegate_is_removed_from_runtime_tool_surface(tmp_path):
     assert '"name":"delegate"' not in agent.prefix
     assert "- delegate(" not in agent.prefix
     assert not hasattr(agent, "tool_delegate")
+
+
+def test_child_runtime_disables_map_engine_but_keeps_request_budget(tmp_path):
+    budget = ModelRequestBudget(
+        provider="openai",
+        model="gpt-5.4",
+        model_input_budget_tokens=65_536,
+        prompt_safety_margin_tokens=2_048,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="explicit",
+    )
+    agent = build_agent(
+        tmp_path,
+        [],
+        feature_flags={"map_engine": True, "memory": False},
+        model_request_budget=budget,
+    )
+
+    child = build_child_runtime(agent, "Explore", ())
+
+    assert agent.feature_enabled("map_engine") is True
+    assert agent.map_engine is not None
+    assert child.feature_enabled("map_engine") is False
+    assert child.map_engine is None
+    assert child.map_context_coordinator is None
+    assert child.model_request_budget is budget
+    assert child.feature_enabled("memory") is False
 
 
 def test_async_worker_notification_is_drained_by_coordinator_only(tmp_path):
