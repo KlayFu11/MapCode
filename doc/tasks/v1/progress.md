@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F3-11 增加离线 MapEngine fixture 演示`
+- 下一可执行任务：`V1-F4-02 解析 ModelRequestBudget 配置契约`
 
 ## 阶段 0：固定施工地基
 
@@ -55,11 +55,11 @@
 - [x] V1-F3-08 实现固定 focused/broad token budget 与 truncation (P0, 依赖 V1-F3-07)
 - [x] V1-F3-09 从同一 snapshot 生成 SelectorCandidateCatalog (P0, 依赖 V1-F3-08)
 - [x] V1-F3-10 实现 MapEngine 公共接口和 lazy index (P0, 依赖 V1-F3-09)
-- [ ] V1-F3-11 增加离线 MapEngine fixture 演示 (P0, 依赖 V1-F3-10)
+- [x] V1-F3-11 增加离线 MapEngine fixture 演示 (P0, 依赖 V1-F3-10)
 
 ## 阶段 4：Pico Runtime 基础接入
 
-- [ ] V1-F4-01 增加 `.pico.toml [features]` 和 `--map-engine` (P0, 依赖 V1-F3-11)
+- [x] V1-F4-01 增加 `.pico.toml [features]` 和 `--map-engine` (P0, 依赖 V1-F3-11)
 - [ ] V1-F4-02 解析 ModelRequestBudget 配置契约 (P0, 依赖 V1-F4-01)
 - [ ] V1-F4-03 Runtime 装配 MapEngine、预算对象和 current map (P0, 依赖 V1-F4-02)
 - [ ] V1-F4-04 child runtime 关闭 MapEngine 并保留预算 (P0, 依赖 V1-F4-03)
@@ -146,3 +146,11 @@
 - 日期：2026-06-23
 - 执行任务：`V1-F3-09 从同一 snapshot 生成 SelectorCandidateCatalog`。
 - 结果：`V1-F3-09` 新增 deterministic selector catalog builder，从同一 `SymbolIndex` snapshot 生成全量 `candidate_paths`、预算受控 `rendered_text`、实际可见 `rendered_paths` 和计数/截断元数据；目标 pytest、architecture boundary、Ruff 和 diff whitespace 检查均通过。本轮只执行一个任务，不启动 `V1-F3-10`。
+
+- 日期：2026-06-24
+- 执行任务：`V1-F3-11 增加离线 MapEngine fixture 演示`。
+- 结果：`V1-F3-11` 已由 commit `0dbafd2` 完成，新增固定 offline fixture 与 public MapEngine facade 演示测试，覆盖 broad/focused maps、selector catalog、cache hit、path-ident filtering、multipliers、symbol hits 和 stable fallback；本次仅按用户确认补齐进度账本，下一任务进入 `V1-F4-01`。
+
+- 日期：2026-06-24
+- 执行任务：`V1-F4-01 增加 .pico.toml [features] 和 --map-engine`。
+- 结果：`V1-F4-01` 新增 `[features] map_engine` 配置解析、`--map-engine` / `--no-map-engine` CLI override、默认关闭测试、配置示例和配置文档；目标 pytest、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-02`。

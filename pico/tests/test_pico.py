@@ -748,6 +748,60 @@ def test_build_arg_parser_accepts_deepseek_provider(tmp_path):
     assert args.provider == "deepseek"
 
 
+def test_build_agent_disables_map_engine_by_default(tmp_path):
+    args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
+
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch("pico.cli.OpenAICompatibleModelClient"):
+            agent = pico_pkg.build_agent(args)
+
+    assert agent.feature_enabled("map_engine") is False
+
+
+def test_build_agent_enables_map_engine_from_project_toml(tmp_path):
+    (tmp_path / ".pico.toml").write_text(
+        "[features]\nmap_engine = true\n",
+        encoding="utf-8",
+    )
+    args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
+
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch("pico.cli.OpenAICompatibleModelClient"):
+            agent = pico_pkg.build_agent(args)
+
+    assert agent.feature_enabled("map_engine") is True
+
+
+def test_build_agent_cli_map_engine_flags_override_project_toml(tmp_path):
+    (tmp_path / ".pico.toml").write_text(
+        "[features]\nmap_engine = true\n",
+        encoding="utf-8",
+    )
+    disabled_args = pico_pkg.build_arg_parser().parse_args(
+        ["--cwd", str(tmp_path), "--no-map-engine"]
+    )
+
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch("pico.cli.OpenAICompatibleModelClient"):
+            disabled_agent = pico_pkg.build_agent(disabled_args)
+
+    assert disabled_agent.feature_enabled("map_engine") is False
+
+    (tmp_path / ".pico.toml").write_text(
+        "[features]\nmap_engine = false\n",
+        encoding="utf-8",
+    )
+    enabled_args = pico_pkg.build_arg_parser().parse_args(
+        ["--cwd", str(tmp_path), "--map-engine"]
+    )
+
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+        with patch("pico.cli.OpenAICompatibleModelClient"):
+            enabled_agent = pico_pkg.build_agent(enabled_args)
+
+    assert enabled_agent.feature_enabled("map_engine") is True
+
+
 def test_build_agent_uses_anthropic_provider_and_openai_key_fallback(tmp_path):
     args = type(
         "Args",

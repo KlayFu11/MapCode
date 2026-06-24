@@ -18,6 +18,9 @@ api_key = "your-api-key"
 base_url = "https://api.deepseek.com/anthropic"
 model = "deepseek-v4-pro"
 
+[features]
+map_engine = false
+
 [sandbox]
 mode = "off"
 backend = "auto"

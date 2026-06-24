@@ -19,6 +19,9 @@ ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 DEFAULT_PROVIDER = "openai"
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "pico" / "config.toml"
 PROJECT_CONFIG_NAME = ".pico.toml"
+DEFAULT_PROJECT_FEATURE_FLAGS = {
+    "map_engine": False,
+}
 
 
 @dataclass(frozen=True)
@@ -287,13 +290,36 @@ def resolve_project_sandbox_config(
     return resolve_sandbox_values(values)
 
 
+def resolve_project_feature_flags(
+    *,
+    start: str | Path = ".",
+    config_path: str | None = None,
+    map_engine: bool | None = None,
+) -> dict[str, bool]:
+    file_values = _load_config_values(start=start, explicit_path=config_path)
+    values = dict(DEFAULT_PROJECT_FEATURE_FLAGS)
+    features = file_values.get("features", {}) or {}
+    if "map_engine" in features:
+        values["map_engine"] = _coerce_bool_config(
+            "features.map_engine", features["map_engine"]
+        )
+    if map_engine is not None:
+        values["map_engine"] = bool(map_engine)
+    return values
+
+
 def normalize_provider_name(provider: str | None) -> str:
     normalized = (provider or DEFAULT_PROVIDER).strip().lower()
     return PROVIDER_ALIASES.get(normalized, normalized)
 
 
 def _load_config_values(start: str | Path, explicit_path: str | None) -> dict[str, Any]:
-    values: dict[str, Any] = {"top": {}, "providers": {}, "sandbox": {}}
+    values: dict[str, Any] = {
+        "top": {},
+        "providers": {},
+        "sandbox": {},
+        "features": {},
+    }
     if explicit_path:
         _merge_config_values(
             values, _read_config_file(Path(explicit_path).expanduser())
@@ -315,7 +341,12 @@ def _read_config_file(path: Path) -> dict[str, Any]:
     except OSError as exc:
         raise ValueError(f"could not read Pico config file {path}: {exc}") from exc
 
-    values: dict[str, Any] = {"top": {}, "providers": {}, "sandbox": {}}
+    values: dict[str, Any] = {
+        "top": {},
+        "providers": {},
+        "sandbox": {},
+        "features": {},
+    }
     if "provider" in data:
         values["top"]["provider"] = data["provider"]
 
@@ -329,6 +360,10 @@ def _read_config_file(path: Path) -> dict[str, Any]:
     if isinstance(sandbox, dict):
         values["sandbox"] = dict(sandbox)
 
+    features = data.get("features", {})
+    if isinstance(features, dict):
+        values["features"] = dict(features)
+
     for name in ("openai", "anthropic", "deepseek"):
         section = data.get(name, {})
         if isinstance(section, dict):
@@ -339,6 +374,7 @@ def _read_config_file(path: Path) -> dict[str, Any]:
 def _merge_config_values(target: dict[str, Any], incoming: dict[str, Any]) -> None:
     target["top"].update(incoming.get("top", {}))
     target["sandbox"].update(incoming.get("sandbox", {}))
+    target["features"].update(incoming.get("features", {}))
     for name, section in incoming.get("providers", {}).items():
         target["providers"].setdefault(name, {}).update(section)
 
@@ -421,3 +457,9 @@ def _validate_protocol(protocol: Any, provider_name: str) -> str:
             f"provider {provider_name!r} uses unsupported protocol: {protocol!r}"
         )
     return normalized
+
+
+def _coerce_bool_config(field: str, value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"{field} must be a boolean")

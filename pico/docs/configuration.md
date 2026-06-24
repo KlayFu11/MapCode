@@ -44,6 +44,22 @@ pico --provider openai     # 临时切换
 pico --provider anthropic --model claude-opus-4-6
 ```
 
+## Feature flags
+
+MapEngine repo map 默认关闭。需要在项目内试用时，可以在 `.pico.toml` 中开启：
+
+```toml
+[features]
+map_engine = true
+```
+
+CLI 显式参数覆盖 TOML：
+
+```bash
+pico --map-engine
+pico --no-map-engine
+```
+
 ## 环境变量
 
 不写 toml 也能跑——只设环境变量即可：
@@ -70,6 +86,8 @@ pico --api-key sk-... --base-url https://...
 pico --max-steps 50 --max-new-tokens 4096
 pico --temperature 0.0
 pico --approval ask          # ask | auto | never
+pico --map-engine            # 启用 MapEngine repo map feature
+pico --no-map-engine         # 禁用 MapEngine repo map feature
 pico --sandbox best_effort   # off | best_effort | required
 pico --no-auto-dream         # 关闭后台 memory 整合
 pico --cwd /path/to/repo     # 切换工作目录

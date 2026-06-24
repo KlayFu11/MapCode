@@ -19,6 +19,7 @@ from .config import (
     PROVIDER_DEFAULTS,
     default_max_tokens_for_provider,
     load_project_env,
+    resolve_project_feature_flags,
     resolve_project_sandbox_config,
     resolve_provider_config,
 )
@@ -199,6 +200,11 @@ def build_agent(args):
         mode=getattr(args, "sandbox", None),
         backend=getattr(args, "sandbox_backend", None),
     )
+    feature_flags = resolve_project_feature_flags(
+        start=workspace.repo_root,
+        config_path=getattr(args, "config", None),
+        map_engine=getattr(args, "map_engine", None),
+    )
     load_project_env(workspace.repo_root, override=False)
     configured_secret_names = _configured_secret_names(args)
     session_id = args.resume
@@ -226,6 +232,7 @@ def build_agent(args):
             model_client_factory=model_client_factory,
             sandbox_config=sandbox_config,
             ask_user_callback=ask_user_callback,
+            feature_flags=feature_flags,
         )
     return Pico(
         model_client=model,
@@ -242,6 +249,7 @@ def build_agent(args):
         model_client_factory=model_client_factory,
         sandbox_config=sandbox_config,
         ask_user_callback=ask_user_callback,
+        feature_flags=feature_flags,
     )
 
 
@@ -254,6 +262,20 @@ def build_arg_parser():
     parser.add_argument("--cwd", default=".", help="Workspace directory.")
     parser.add_argument(
         "--config", default=None, help="Path to a Pico TOML config file."
+    )
+    map_engine_group = parser.add_mutually_exclusive_group()
+    map_engine_group.add_argument(
+        "--map-engine",
+        dest="map_engine",
+        action="store_true",
+        default=None,
+        help="Enable the MapEngine repo map feature.",
+    )
+    map_engine_group.add_argument(
+        "--no-map-engine",
+        dest="map_engine",
+        action="store_false",
+        help="Disable the MapEngine repo map feature.",
     )
     parser.add_argument(
         "--provider",
