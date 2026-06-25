@@ -16,6 +16,9 @@ def test_run_store_creates_run_directory_and_state_file(tmp_path):
     assert persisted["task_id"] == "task_001"
     assert persisted["run_id"] == "run_001"
     assert persisted["user_request"] == "Inspect the repo."
+    assert persisted["map_context_summary"] == {}
+    assert persisted["main_model_calls"] == 0
+    assert persisted["selector_model_calls"] == 0
 
 
 def test_run_store_appends_trace_jsonl(tmp_path):

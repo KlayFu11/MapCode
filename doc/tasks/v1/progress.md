@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F4-05 RunStore 增加原子 JSON artifact`
+- 下一可执行任务：`V1-F4-07 注册 retrieval trace phase 与事件`
 
 ## 阶段 0：固定施工地基
 
@@ -64,7 +64,7 @@
 - [x] V1-F4-03 Runtime 装配 MapEngine、预算对象和 current map (P0, 依赖 V1-F4-02)
 - [x] V1-F4-04 child runtime 关闭 MapEngine 并保留预算 (P0, 依赖 V1-F4-03)
 - [x] V1-F4-05 RunStore 增加原子 JSON artifact (P0, 依赖 V1-F4-03)
-- [ ] V1-F4-06 TaskState 增加 MapContext 与模型调用摘要 (P0, 依赖 V1-F4-03)
+- [x] V1-F4-06 TaskState 增加 MapContext 与模型调用摘要 (P0, 依赖 V1-F4-03)
 - [ ] V1-F4-07 注册 retrieval trace phase 与事件 (P0, 依赖 V1-F4-03)
 - [ ] V1-F4-08 实现 Coordinator 数据适配与 selector catalog 接口 (P0, 依赖 V1-F4-05/V1-F4-06/V1-F4-07)
 - [ ] V1-F4-09 实现 MapEngineConsoleReporter (P0, 依赖 V1-F4-08)
@@ -166,3 +166,7 @@
 - 日期：2026-06-24
 - 执行任务：`V1-F4-04 child runtime 关闭 MapEngine 并保留预算`。
 - 结果：`V1-F4-04` 在 worker child runtime 构造时复制父 feature flags 并强制 `map_engine=False`，同时传递父 runtime 已解析的不可变 `ModelRequestBudget`；新增 acceptance test 覆盖 parent MapEngine 保持启用、child MapEngine 关闭、child 不创建 MapEngine/Coordinator、预算对象保留和其他 feature flag 继承。目标 pytest、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-05`。
+
+- 日期：2026-06-25
+- 执行任务：`V1-F4-06 TaskState 增加 MapContext 与模型调用摘要`。
+- 结果：`V1-F4-06` 为 `TaskState` 增加轻量 `map_context_summary`、`main_model_calls` 和 `selector_model_calls`，保留旧 `task_state.json` 兼容，并明确 `attempts` 与实际模型调用计数分离；目标 pytest、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-07`。

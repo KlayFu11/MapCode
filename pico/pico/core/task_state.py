@@ -1,5 +1,4 @@
 """一次 ask() 运行过程中的状态机快照。
-
 它回答的是：这次用户请求当前进行到哪了、调了多少次工具、最后为什么停下。
 这个对象会被不断写入 task_state.json，供运行中观察和运行后复盘。
 """
@@ -31,6 +30,9 @@ class TaskState:
     status: str = STATUS_RUNNING
     tool_steps: int = 0
     attempts: int = 0
+    main_model_calls: int = 0
+    selector_model_calls: int = 0
+    map_context_summary: dict = field(default_factory=dict)
     last_tool: str = ""
     stop_reason: str = ""
     final_answer: str = ""
@@ -57,6 +59,9 @@ class TaskState:
             status=str(data.get("status", STATUS_RUNNING)),
             tool_steps=int(data.get("tool_steps", 0)),
             attempts=int(data.get("attempts", 0)),
+            main_model_calls=int(data.get("main_model_calls", 0)),
+            selector_model_calls=int(data.get("selector_model_calls", 0)),
+            map_context_summary=dict(data.get("map_context_summary", {}) or {}),
             last_tool=str(data.get("last_tool", "")),
             stop_reason=str(data.get("stop_reason", "")),
             final_answer=str(data.get("final_answer", "")),
@@ -70,8 +75,16 @@ class TaskState:
         )
 
     def record_attempt(self):
-        # attempt 统计的是“模型被调用了几轮”，不等于 tool_steps。
+        # attempt 统计主循环尝试轮次，不等于实际模型调用数。
         self.attempts += 1
+        return self
+
+    def record_main_model_call(self):
+        self.main_model_calls += 1
+        return self
+
+    def record_selector_model_call(self):
+        self.selector_model_calls += 1
         return self
 
     def record_tool(self, name):
@@ -111,6 +124,9 @@ class TaskState:
             "status": self.status,
             "tool_steps": self.tool_steps,
             "attempts": self.attempts,
+            "main_model_calls": self.main_model_calls,
+            "selector_model_calls": self.selector_model_calls,
+            "map_context_summary": dict(self.map_context_summary),
             "last_tool": self.last_tool,
             "stop_reason": self.stop_reason,
             "final_answer": self.final_answer,
