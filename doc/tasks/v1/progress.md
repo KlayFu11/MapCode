@@ -63,7 +63,7 @@
 - [x] V1-F4-02 解析 ModelRequestBudget 配置契约 (P0, 依赖 V1-F4-01)
 - [x] V1-F4-03 Runtime 装配 MapEngine、预算对象和 current map (P0, 依赖 V1-F4-02)
 - [x] V1-F4-04 child runtime 关闭 MapEngine 并保留预算 (P0, 依赖 V1-F4-03)
-- [ ] V1-F4-05 RunStore 增加原子 JSON artifact (P0, 依赖 V1-F4-03)
+- [x] V1-F4-05 RunStore 增加原子 JSON artifact (P0, 依赖 V1-F4-03)
 - [ ] V1-F4-06 TaskState 增加 MapContext 与模型调用摘要 (P0, 依赖 V1-F4-03)
 - [ ] V1-F4-07 注册 retrieval trace phase 与事件 (P0, 依赖 V1-F4-03)
 - [ ] V1-F4-08 实现 Coordinator 数据适配与 selector catalog 接口 (P0, 依赖 V1-F4-05/V1-F4-06/V1-F4-07)

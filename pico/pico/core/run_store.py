@@ -67,6 +67,14 @@ class RunStore:
         path.write_text(str(content), encoding="utf-8")
         return path
 
+    def write_json_artifact(self, task_state, stem, payload):
+        directory = self.artifacts_dir(task_state)
+        directory.mkdir(parents=True, exist_ok=True)
+        index = len(list(directory.glob(f"{stem}-*.json"))) + 1
+        path = directory / f"{stem}-{index:03d}.json"
+        self._write_json_atomic(path, payload)
+        return path
+
     def write_report(self, task_state, report):
         path = self.report_path(task_state)
         path.parent.mkdir(parents=True, exist_ok=True)

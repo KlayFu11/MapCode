@@ -64,3 +64,49 @@ def test_run_store_tolerates_missing_final_report(tmp_path):
 
     assert store.trace_path(state.run_id).exists()
     assert not store.report_path(state.run_id).exists()
+
+
+def test_run_store_writes_numbered_json_artifacts(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+    state = TaskState.create(run_id="run_005", task_id="task_005", user_request="Persist evidence.")
+    store.start_run(state)
+
+    first_path = store.write_json_artifact(
+        state,
+        "map-evidence",
+        {"event": "map_generated", "ranked_files": ["src/app.py"]},
+    )
+    second_path = store.write_json_artifact(
+        state.run_id,
+        "map-evidence",
+        {"event": "map_generated", "ranked_files": ["src/auth.py"]},
+    )
+
+    assert first_path == store.artifacts_dir(state.run_id) / "map-evidence-001.json"
+    assert second_path == store.artifacts_dir(state.run_id) / "map-evidence-002.json"
+    assert json.loads(first_path.read_text(encoding="utf-8")) == {
+        "event": "map_generated",
+        "ranked_files": ["src/app.py"],
+    }
+    assert json.loads(second_path.read_text(encoding="utf-8")) == {
+        "event": "map_generated",
+        "ranked_files": ["src/auth.py"],
+    }
+
+
+def test_run_store_writes_json_artifact_atomically(tmp_path):
+    store = RunStore(tmp_path / ".pico" / "runs")
+    state = TaskState.create(run_id="run_006", task_id="task_006", user_request="Persist atomically.")
+    store.start_run(state)
+    calls = []
+
+    def write_json_atomic(path, payload):
+        calls.append((path, payload))
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    store._write_json_atomic = write_json_atomic
+
+    path = store.write_json_artifact(state, "map-evidence", {"ok": True})
+
+    assert path == store.artifacts_dir(state.run_id) / "map-evidence-001.json"
+    assert calls == [(path, {"ok": True})]
