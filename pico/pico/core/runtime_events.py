@@ -2,6 +2,17 @@
 
 from .workspace import now
 
+RETRIEVAL_EVENTS = (
+    "map_index_status",
+    "map_prompt_analyzed",
+    "map_context_ranked",
+    "map_context_selected",
+    "map_selector_requested",
+    "map_focus_confirmed",
+    "map_generated",
+    "map_context_failed",
+)
+
 PHASE_BY_EVENT = {
     "run_started": "runtime",
     "prompt_built": "prompt",
@@ -13,6 +24,7 @@ PHASE_BY_EVENT = {
     "compaction_finished": "compact",
     "runtime_identity_mismatch": "runtime",
     "run_finished": "runtime",
+    **{event: "retrieval" for event in RETRIEVAL_EVENTS},
 }
 
 
@@ -45,6 +57,8 @@ def _status_for(event, payload):
         return str(payload.get("tool_status") or "ok")
     if event == "run_finished":
         return str(payload.get("status") or "completed")
+    if event == "map_context_failed":
+        return "error"
     if str(payload.get("tool_error_code", "")):
         return "error"
     return "ok"

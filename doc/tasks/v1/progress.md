@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F4-07 注册 retrieval trace phase 与事件`
+- 下一可执行任务：`V1-F4-08 实现 Coordinator 数据适配与 selector catalog 接口`
 
 ## 阶段 0：固定施工地基
 
@@ -65,7 +65,7 @@
 - [x] V1-F4-04 child runtime 关闭 MapEngine 并保留预算 (P0, 依赖 V1-F4-03)
 - [x] V1-F4-05 RunStore 增加原子 JSON artifact (P0, 依赖 V1-F4-03)
 - [x] V1-F4-06 TaskState 增加 MapContext 与模型调用摘要 (P0, 依赖 V1-F4-03)
-- [ ] V1-F4-07 注册 retrieval trace phase 与事件 (P0, 依赖 V1-F4-03)
+- [x] V1-F4-07 注册 retrieval trace phase 与事件 (P0, 依赖 V1-F4-03)
 - [ ] V1-F4-08 实现 Coordinator 数据适配与 selector catalog 接口 (P0, 依赖 V1-F4-05/V1-F4-06/V1-F4-07)
 - [ ] V1-F4-09 实现 MapEngineConsoleReporter (P0, 依赖 V1-F4-08)
 - [ ] V1-F4-10 扩展 provider 双角色 selector 请求适配 (P0, 依赖 V1-F4-04)
@@ -170,3 +170,7 @@
 - 日期：2026-06-25
 - 执行任务：`V1-F4-06 TaskState 增加 MapContext 与模型调用摘要`。
 - 结果：`V1-F4-06` 为 `TaskState` 增加轻量 `map_context_summary`、`main_model_calls` 和 `selector_model_calls`，保留旧 `task_state.json` 兼容，并明确 `attempts` 与实际模型调用计数分离；目标 pytest、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-07`。
+
+- 日期：2026-06-26
+- 执行任务：`V1-F4-07 注册 retrieval trace phase 与事件`。
+- 结果：`V1-F4-07` 注册 run-level MapEngine retrieval trace events 到 `retrieval` phase，并新增 acceptance test 覆盖 path-ident 命中摘要、focus/path personalization、ranking multiplier/reason codes、selector counts、budget/omission payload 与 `map_context_failed` error status；目标 pytest、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-08`。
