@@ -6,6 +6,7 @@ from pico.core.map_context_prompt import (
     RepoMapSectionRender,
     hash_repo_map_section_text,
 )
+from pico.core.map_context_reporter import MapEngineConsoleReporter
 from pico.core.map_selector import SelectionDecision, SelectorResult
 from pico.core.model_request_budget import ModelRequestBudget
 from pico.core.runtime import Pico
@@ -240,6 +241,98 @@ def test_coordinator_finalizes_prompt_context_and_writes_artifacts(tmp_path):
         finalized.evidence_artifact_path,
     ]
     assert generated_event["section_rendered_hash"] == render.section_rendered_hash
+
+
+def test_console_reporter_renders_index_status_from_existing_status():
+    reporter = MapEngineConsoleReporter()
+
+    report = reporter.render_index_status(_index_status())
+
+    assert report.title == "MapEngine index"
+    assert report.payload == {
+        "cache_status": "hit",
+        "index_snapshot_id": "sha256:adapter",
+        "file_count": 2,
+        "definition_count": 4,
+        "reference_count": 3,
+    }
+    assert report.to_text().splitlines() == [
+        "MapEngine index",
+        "- cache: hit",
+        "- files: 2",
+        "- definitions: 4",
+        "- references: 3",
+        "- snapshot: sha256:adapter",
+    ]
+
+
+def test_console_reporter_renders_prepared_context_without_artifact_path(tmp_path):
+    agent = _runtime(tmp_path)
+    task_state = _start_map_run(agent)
+    fake_engine = _FakeMapEngine()
+    coordinator = MapContextCoordinator(agent, fake_engine, agent.run_store)
+    context = coordinator.prepare_specific(task_state, fake_engine.specific_analysis)
+    reporter = MapEngineConsoleReporter()
+
+    report = reporter.render_context(context)
+
+    assert report.title == "MapEngine retrieval"
+    assert report.payload["branch"] == "specific"
+    assert report.payload["mode"] == "focused"
+    assert report.payload["focus_fnames"] == ["pico/core/runtime.py"]
+    assert report.payload["focus_personalization_files"] == ["pico/core/runtime.py"]
+    assert report.payload["path_personalization_files"] == ["pico/core/session.py"]
+    assert report.payload["symbol_hits"] == ["Runtime"]
+    assert report.payload["path_ident_hits"] == ["PICO"]
+    assert report.payload["path_ident_matched_file_count"] == 2
+    assert report.payload["top_ranked_files"] == ["pico/core/runtime.py"]
+    assert report.payload["rendered_files"] == ["pico/core/runtime.py"]
+    assert report.payload["omitted_files"] == []
+    assert report.payload["map_budget_tokens"] == 4096
+    assert "evidence_artifact_path" not in report.payload
+    assert "repo_map_text" not in report.payload
+    assert "- evidence: " not in report.to_text()
+
+
+def test_console_reporter_renders_finalized_context_artifact_path(tmp_path):
+    agent = _runtime(tmp_path)
+    task_state = _start_map_run(agent)
+    fake_engine = _FakeMapEngine()
+    coordinator = MapContextCoordinator(agent, fake_engine, agent.run_store)
+    prepared = coordinator.prepare_specific(task_state, fake_engine.specific_analysis)
+    finalized = coordinator.finalize_prompt_context(
+        task_state,
+        prepared,
+        _repo_map_render("[repo_map]\npico/core/runtime.py:\n  class Runtime\n"),
+    )
+    reporter = MapEngineConsoleReporter()
+
+    report = reporter.render_context(finalized)
+
+    assert report.payload["evidence_artifact_path"] == (
+        finalized.evidence_artifact_path
+    )
+    assert report.payload["repo_map_artifact_path"] == finalized.repo_map_artifact_path
+    assert f"- evidence: {finalized.evidence_artifact_path}" in report.to_text()
+
+
+def test_console_reporter_renders_broad_fallback_reason(tmp_path):
+    agent = _runtime(tmp_path)
+    task_state = _start_map_run(agent)
+    fake_engine = _FakeMapEngine()
+    coordinator = MapContextCoordinator(agent, fake_engine, agent.run_store)
+    decision = SelectionDecision.broad_fallback("selector_request_over_budget")
+    context = coordinator.prepare_fuzzy(task_state, fake_engine.broad_result, decision)
+    reporter = MapEngineConsoleReporter()
+
+    report = reporter.render_context(context)
+
+    assert report.payload["branch"] == "fuzzy"
+    assert report.payload["stage"] == "fallback"
+    assert report.payload["mode"] == "broad"
+    assert report.payload["fallback_reason"] == "selector_request_over_budget"
+    assert report.payload["map_budget_tokens"] == 8192
+    assert "- fallback: selector_request_over_budget" in report.to_text()
 
 
 def _start_map_run(agent: Pico) -> TaskState:

@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F4-09 实现 MapEngineConsoleReporter`
+- 下一可执行任务：`V1-F4-10 扩展 provider 双角色 selector 请求适配`
 
 ## 阶段 0：固定施工地基
 
@@ -67,7 +67,7 @@
 - [x] V1-F4-06 TaskState 增加 MapContext 与模型调用摘要 (P0, 依赖 V1-F4-03)
 - [x] V1-F4-07 注册 retrieval trace phase 与事件 (P0, 依赖 V1-F4-03)
 - [x] V1-F4-08 实现 Coordinator 数据适配与 selector catalog 接口 (P0, 依赖 V1-F4-05/V1-F4-06/V1-F4-07)
-- [ ] V1-F4-09 实现 MapEngineConsoleReporter (P0, 依赖 V1-F4-08)
+- [x] V1-F4-09 实现 MapEngineConsoleReporter (P0, 依赖 V1-F4-08)
 - [ ] V1-F4-10 扩展 provider 双角色 selector 请求适配 (P0, 依赖 V1-F4-04)
 
 ## 阶段 5：PromptPurpose 与 Repo Map 注入
@@ -178,3 +178,7 @@
 - 日期：2026-06-27
 - 执行任务：`V1-F4-08 实现 Coordinator 数据适配与 selector catalog 接口`。
 - 结果：`V1-F4-08` 为 `MapContextCoordinator` 增加 analyze/prepare/build_selector_catalog/finalize 数据面 adapter，覆盖同 snapshot selector catalog、prepared/finalized `MapContextResult`、retrieval trace、repo-map/map-evidence artifact 和轻量 `TaskState.map_context_summary`；目标 pytest、相关 DTO 回归、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-09`。
+
+- 日期：2026-06-29
+- 执行任务：`V1-F4-09 实现 MapEngineConsoleReporter`。
+- 结果：`V1-F4-09` 新增 `MapEngineConsoleReporter` 和 `MapEngineConsoleReport`，支持 index、retrieval、finalized artifact path、broad fallback 和 failure 的纯 evidence 展示投影；prepared 状态不伪造 artifact path，不读取 `repo_map_text`，不接入 CLI/TUI、trace 或 artifact 写入。目标 pytest、runtime evidence/worker 回归、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F4-10`。

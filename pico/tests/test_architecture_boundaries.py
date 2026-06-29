@@ -32,6 +32,7 @@ def test_core_modules_stay_below_entropy_budget():
         "pico/core/todo_ledger.py": 120,
         "pico/core/worker_manager.py": 220,
         "pico/core/context_manager.py": 420,
+        "pico/core/map_context_reporter.py": 200,
         "pico/core/context_usage.py": 120,
         "pico/core/compact.py": 180,
         "pico/core/engine.py": 470,
