@@ -9,7 +9,9 @@ class ModelResult:
     metadata: dict = field(default_factory=dict)
 
 
-def complete_model(model_client, prompt, max_new_tokens, **kwargs):
+def complete_model(model_client, prompt, max_new_tokens, system_prompt=None, **kwargs):
+    if system_prompt is not None:
+        kwargs["system_prompt"] = system_prompt
     if hasattr(model_client, "complete_result"):
         return model_client.complete_result(prompt, max_new_tokens, **kwargs)
     text = model_client.complete(prompt, max_new_tokens, **kwargs)

@@ -291,7 +291,14 @@ class OpenAICompatibleModelClient:
         self.supports_prompt_cache = any(host in self.base_url for host in ("openai.com", "right.codes"))
         self.last_completion_metadata = {}
 
-    def complete(self, prompt, max_new_tokens, prompt_cache_key=None, prompt_cache_retention=None):
+    def complete(
+        self,
+        prompt,
+        max_new_tokens,
+        prompt_cache_key=None,
+        prompt_cache_retention=None,
+        system_prompt=None,
+    ):
         """向 OpenAI-compatible `/responses` 接口发起一次模型调用。
 
         为什么存在：
@@ -327,6 +334,8 @@ class OpenAICompatibleModelClient:
         }
         if self.temperature is not None:
             payload["temperature"] = self.temperature
+        if system_prompt:
+            payload["instructions"] = system_prompt
         # runtime 传入的是“稳定前缀”的签名，而不是整段 prompt 的签名。
         # 这样缓存复用针对的是稳定段，不会因为动态 history 每轮变化而失效。
         if self.supports_prompt_cache and prompt_cache_key:
@@ -453,7 +462,14 @@ class AnthropicCompatibleModelClient:
         self.supports_prompt_cache = False
         self.last_completion_metadata = {}
 
-    def complete(self, prompt, max_new_tokens, prompt_cache_key=None, prompt_cache_retention=None):
+    def complete(
+        self,
+        prompt,
+        max_new_tokens,
+        prompt_cache_key=None,
+        prompt_cache_retention=None,
+        system_prompt=None,
+    ):
         # 为了保持统一接口，runtime 仍然会传缓存参数进来；
         # 这里只是显式丢弃，因为当前 Anthropic-compatible 路径没有接缓存复用。
         del prompt_cache_key, prompt_cache_retention
@@ -476,6 +492,8 @@ class AnthropicCompatibleModelClient:
         }
         if self.temperature is not None:
             payload["temperature"] = self.temperature
+        if system_prompt:
+            payload["system"] = system_prompt
 
         headers = {
             "Content-Type": "application/json",
