@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from ..features import memory as memorylib, skills as skillslib
 from .context_usage import ContextUsageAnalyzer
+from .map_context_prompt import PromptBuildResult, PromptPurpose
 from .turn_history import TurnHistoryBuilder, tail_clip
 
 DEFAULT_TOTAL_BUDGET = 60000
@@ -69,7 +70,7 @@ class ContextManager:
         self.reduction_order = tuple(reduction_order or DEFAULT_REDUCTION_ORDER)
         self.history_builder = TurnHistoryBuilder(agent)
 
-    def build(self, user_message):
+    def build(self, user_message, *, purpose: PromptPurpose) -> PromptBuildResult:
         """按预算组装一轮完整 prompt。
 
         为什么存在：
@@ -79,7 +80,7 @@ class ContextManager:
 
         输入 / 输出：
         - 输入：`user_message`，也就是用户当前这一轮的新请求。
-        - 输出：`(prompt, metadata)`。
+        - 输出：`PromptBuildResult`。
           `prompt` 是最终发送给模型的文本；
           `metadata` 记录了每个 section 的原始长度、裁剪后的长度、是否触发了
           预算收缩等信息，后续会进入 trace/report，便于解释这轮 prompt
@@ -132,7 +133,11 @@ class ContextManager:
                 user_message=user_message,
                 section_texts=section_texts,
             )
-            return prompt, metadata
+            return PromptBuildResult(
+                prompt=prompt,
+                metadata=metadata,
+                repo_map_render=None,
+            )
 
         budgets = dict(self.section_budgets)
         rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes)
@@ -179,7 +184,11 @@ class ContextManager:
             user_message=user_message,
             section_texts=section_texts,
         )
-        return prompt, metadata
+        return PromptBuildResult(
+            prompt=prompt,
+            metadata=metadata,
+            repo_map_render=None,
+        )
 
     def _render_sections_without_reduction(self, section_texts, selected_notes=None):
         selected_notes = selected_notes or []
@@ -328,6 +337,14 @@ class ContextManager:
         return "\n\n".join(rendered[section].rendered for section in SECTION_ORDER).strip()
 
     def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts):
+        model_request_budget = self.agent.model_request_budget
+        active_repo_map_reservation_tokens = 0
+        base_prompt_budget_tokens = max(
+            0,
+            model_request_budget.model_input_budget_tokens
+            - active_repo_map_reservation_tokens
+            - model_request_budget.prompt_safety_margin_tokens,
+        )
         section_metadata = {}
         for section in SECTION_ORDER[:-1]:
             section_metadata[section] = {
@@ -341,6 +358,13 @@ class ContextManager:
             "rendered_chars": len(rendered[CURRENT_REQUEST_SECTION].rendered),
         }
         return {
+            "model_input_budget_tokens": model_request_budget.model_input_budget_tokens,
+            "prompt_safety_margin_tokens": model_request_budget.prompt_safety_margin_tokens,
+            "active_repo_map_reservation_tokens": active_repo_map_reservation_tokens,
+            "base_prompt_budget_tokens": base_prompt_budget_tokens,
+            "estimated_request_tokens": model_request_budget.estimate_request_tokens(prompt),
+            "request_over_budget": model_request_budget.request_over_budget(prompt),
+            "model_request_budget_source": model_request_budget.source,
             "prompt_chars": len(prompt),
             "prompt_budget_chars": self.total_budget,
             "prompt_over_budget": len(prompt) > self.total_budget,

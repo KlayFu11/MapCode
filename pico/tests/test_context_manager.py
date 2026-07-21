@@ -1,6 +1,13 @@
+import pytest
+
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.core.context_manager import ContextManager
+from pico.core.map_context_prompt import PromptBuildResult
+from pico.core.model_request_budget import (
+    MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+    ModelRequestBudget,
+)
 
 
 def build_workspace(tmp_path):
@@ -21,13 +28,58 @@ def build_agent(tmp_path, outputs, **kwargs):
     )
 
 
+def build_result(manager, user_message):
+    return manager.build(user_message, purpose="main_model")
+
+
+def test_context_manager_requires_explicit_prompt_purpose(tmp_path):
+    manager = ContextManager(build_agent(tmp_path, []))
+
+    with pytest.raises(TypeError):
+        manager.build("Where is the deploy key?")
+
+
+def test_context_manager_returns_build_local_prompt_result_and_budget_metadata(tmp_path):
+    model_request_budget = ModelRequestBudget(
+        provider="test",
+        model="test-model",
+        model_input_budget_tokens=512,
+        prompt_safety_margin_tokens=32,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="explicit",
+    )
+    agent = build_agent(tmp_path, [], model_request_budget=model_request_budget)
+    manager = ContextManager(agent)
+
+    first = build_result(manager, "Inspect the context manager.")
+    second = build_result(manager, "Inspect the context manager.")
+
+    assert isinstance(first, PromptBuildResult)
+    assert first.repo_map_render is None
+    assert first is not second
+    assert first.metadata is not second.metadata
+    assert first.prompt == second.prompt
+    assert first.metadata == second.metadata
+    assert {
+        "model_input_budget_tokens": 512,
+        "prompt_safety_margin_tokens": 32,
+        "active_repo_map_reservation_tokens": 0,
+        "base_prompt_budget_tokens": 480,
+        "estimated_request_tokens": model_request_budget.estimate_request_tokens(first.prompt),
+        "request_over_budget": model_request_budget.request_over_budget(first.prompt),
+        "model_request_budget_source": "explicit",
+    }.items() <= first.metadata.items()
+
+
 def test_context_manager_assembles_sections_in_expected_order(tmp_path):
     agent = build_agent(tmp_path, [])
     agent.memory.append_note("deploy key is red", tags=("deploy",), created_at="2026-04-07T10:00:00+00:00")
     agent.record({"role": "user", "content": "old request", "created_at": "2026-04-07T09:59:00+00:00"})
     agent.record({"role": "assistant", "content": "old answer", "created_at": "2026-04-07T10:00:30+00:00"})
 
-    prompt, metadata = ContextManager(agent).build("Where is the deploy key?")
+    result = build_result(ContextManager(agent), "Where is the deploy key?")
+    prompt = result.prompt
+    metadata = result.metadata
 
     assert prompt.index("You are pico") < prompt.index("Memory:")
     assert prompt.index("Memory:") < prompt.index("Available skills:")
@@ -63,7 +115,9 @@ def test_context_manager_reduces_relevant_memory_before_history_and_preserves_ne
         },
     )
 
-    prompt, metadata = manager.build("keep this request verbatim")
+    result = build_result(manager, "keep this request verbatim")
+    prompt = result.prompt
+    metadata = result.metadata
 
     for section in ("prefix", "memory", "relevant_memory", "history"):
         assert metadata["sections"][section]["rendered_chars"] <= metadata["sections"][section]["budget_chars"]
@@ -84,7 +138,7 @@ def test_context_manager_renders_top_three_episodic_notes_per_note_under_budget(
     agent.memory.append_note("older unmatched note", created_at="2026-04-07T09:59:00+00:00")
     agent.memory.append_note("Unrelated note", created_at="2026-04-07T11:00:00+00:00")
 
-    prompt, metadata = ContextManager(
+    result = build_result(ContextManager(
         agent,
         total_budget=500,
         section_budgets={
@@ -94,7 +148,9 @@ def test_context_manager_renders_top_three_episodic_notes_per_note_under_budget(
             "relevant_memory": 80,
             "history": 60,
         },
-    ).build("recall")
+    ), "recall")
+    prompt = result.prompt
+    metadata = result.metadata
 
     assert metadata["relevant_memory"]["selected_count"] == 3
     assert metadata["relevant_memory"]["limit"] == 3
@@ -124,7 +180,7 @@ def test_context_manager_preserves_current_request_when_over_budget(tmp_path):
     agent.history_text = lambda: "Transcript:\n" + "\n".join(f"[user] {i} " + ("D" * 220) for i in range(5))
 
     request = "please preserve this request exactly"
-    prompt, metadata = ContextManager(
+    result = build_result(ContextManager(
         agent,
         total_budget=250,
         section_budgets={
@@ -134,7 +190,9 @@ def test_context_manager_preserves_current_request_when_over_budget(tmp_path):
             "relevant_memory": 80,
             "history": 80,
         },
-    ).build(request)
+    ), request)
+    prompt = result.prompt
+    metadata = result.metadata
 
     assert prompt.split("Current user request:\n", 1)[1] == request
     assert metadata["current_request"]["text"] == request
@@ -169,7 +227,9 @@ def test_context_manager_collapses_older_duplicate_reads_into_one_summary_line(t
             }
         )
 
-    prompt, metadata = ContextManager(agent).build("check the file")
+    result = build_result(ContextManager(agent), "check the file")
+    prompt = result.prompt
+    metadata = result.metadata
     transcript = prompt.split("\n\nTranscript:\n", 1)[1].split("\n\nCurrent user request:", 1)[0]
 
     assert transcript.count("[tool:read_file]") == 0
@@ -201,7 +261,9 @@ def test_context_manager_summarizes_older_tool_output_into_one_line(tmp_path):
             }
         )
 
-    prompt, metadata = ContextManager(agent).build("check failures")
+    result = build_result(ContextManager(agent), "check failures")
+    prompt = result.prompt
+    metadata = result.metadata
     transcript = prompt.split("\n\nTranscript:\n", 1)[1].split("\n\nCurrent user request:", 1)[0]
 
     assert 'pytest -q -> FAIL test_one | FAIL test_two | FAIL test_three' in transcript
@@ -234,7 +296,9 @@ def test_context_manager_relevant_memory_can_mix_durable_notes(tmp_path):
 
     agent = build_agent(tmp_path, [])
 
-    prompt, metadata = ContextManager(agent).build("What conventions should I follow?")
+    result = build_result(ContextManager(agent), "What conventions should I follow?")
+    prompt = result.prompt
+    metadata = result.metadata
     relevant_section = prompt.split("Relevant memory:\n", 1)[1].split("\n\nTranscript:", 1)[0]
 
     assert "Use constrained tools instead of guessing." in relevant_section

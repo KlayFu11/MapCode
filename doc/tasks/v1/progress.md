@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F5-01 引入 PromptPurpose 和 PromptBuildResult`
+- 下一可执行任务：`V1-F5-02 迁移 Runtime wrapper 与 main model 调用点`
 
 ## 阶段 0：固定施工地基
 
@@ -72,7 +72,7 @@
 
 ## 阶段 5：PromptPurpose 与 Repo Map 注入
 
-- [ ] V1-F5-01 引入 PromptPurpose 和 PromptBuildResult (P0, 依赖 V1-F4-09/V1-F4-10)
+- [x] V1-F5-01 引入 PromptPurpose 和 PromptBuildResult (P0, 依赖 V1-F4-09/V1-F4-10)
 - [ ] V1-F5-02 迁移 Runtime wrapper 与 main model 调用点 (P0, 依赖 V1-F5-01)
 - [ ] V1-F5-03 迁移 prompt preview 调用点 (P0, 依赖 V1-F5-02)
 - [ ] V1-F5-04 迁移 evaluation 与 step-limit summary 调用点 (P0, 依赖 V1-F5-03)
@@ -186,3 +186,7 @@
 - 日期：2026-07-05
 - 执行任务：`V1-F4-10 扩展 provider 双角色 selector 请求适配`。
 - 结果：`V1-F4-10` 在现有 provider 调用链中增加可选 selector `system_prompt`，OpenAI-compatible payload 映射到顶层 `instructions`，Anthropic-compatible payload 映射到顶层 `system`，动态 prompt 保持 user role；未传入 `system_prompt` 时主模型 payload 不新增 system/instructions 字段。目标 pytest、architecture boundary、Ruff 和 `git diff --check` 均通过。本轮只执行一个任务，不启动 `V1-F5-01`。
+
+- 日期：2026-07-21
+- 执行任务：`V1-F5-01 引入 PromptPurpose 和 PromptBuildResult`。
+- 结果：`ContextManager.build()` 现在要求显式 keyword-only `purpose` 并返回 build-local `PromptBuildResult`；prompt 文本与既有 base-prompt reduction 不变，`repo_map_render` 仍为 `None`，metadata 记录七项 runtime-owned request-budget 字段。ContextManager 目标测试、Ruff 和 `git diff --check` 均通过。`V1-F5-02` 继续迁移旧 runtime 调用点。
