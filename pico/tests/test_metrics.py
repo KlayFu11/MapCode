@@ -11,6 +11,7 @@ from pico.evaluation.metrics import (
 )
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.context_manager import ContextManager
 
 
 def test_feature_ablation_uses_evaluation_prompt_build_result(tmp_path):
@@ -34,6 +35,42 @@ def test_feature_ablation_uses_evaluation_prompt_build_result(tmp_path):
 
     assert purposes == ["evaluation", "evaluation", "evaluation"]
     assert metrics["full"]["current_request_preserved"] is True
+
+
+def test_feature_ablation_over_budget_does_not_compact_session_history(tmp_path):
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    agent = Pico(
+        model_client=ScriptedModelClient([]),
+        workspace=WorkspaceContext.build(tmp_path),
+        session_store=SessionStore(tmp_path / ".pico" / "sessions"),
+        approval_policy="auto",
+    )
+    agent.context_manager = ContextManager(
+        agent,
+        total_budget=100,
+        section_budgets={"prefix": 40, "memory": 40, "relevant_memory": 40, "history": 40},
+        section_floors={"prefix": 40, "memory": 40, "relevant_memory": 40, "history": 40},
+    )
+    for index in range(8):
+        agent.record({"role": "user", "content": f"old request {index} " + ("x" * 80)})
+        agent.record({"role": "assistant", "content": f"old answer {index} " + ("y" * 80)})
+    history_before = list(agent.session["history"])
+    compactions_before = agent.session.get("compactions")
+    original_build = agent.context_manager.build
+    build_metadata = []
+
+    def record_build(user_message, *, purpose):
+        result = original_build(user_message, purpose=purpose)
+        build_metadata.append((purpose, result.metadata["prompt_over_budget"]))
+        return result
+
+    agent.context_manager.build = record_build
+
+    measure_feature_ablation_metrics(agent, "inspect the workspace")
+
+    assert build_metadata == [("evaluation", True)] * 3
+    assert agent.session["history"] == history_before
+    assert agent.session.get("compactions") == compactions_before
 
 
 def test_run_context_ablation_v2_writes_expected_artifact(tmp_path):

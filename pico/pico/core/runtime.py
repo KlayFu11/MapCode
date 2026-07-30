@@ -670,7 +670,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.resume_state = self.evaluate_resume_state()
         build_result = self.context_manager.build(user_message, purpose=purpose)
         if (
-            purpose != "prompt_preview"
+            purpose == "main_model"
             and build_result.metadata.get("prompt_over_budget")
             and len(self.session.get("history", [])) > 4
         ):

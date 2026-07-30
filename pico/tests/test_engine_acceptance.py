@@ -2,6 +2,9 @@ import json
 
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.context_manager import ContextManager
+from pico.core.engine_helpers import request_step_limit_summary
+from pico.core.task_state import TaskState
 from pico.providers import ProviderError
 
 
@@ -230,3 +233,39 @@ def test_step_limit_falls_back_to_cold_message_when_summary_fails(tmp_path):
 
     stop_event = next(e for e in events if e["type"] == "stop")
     assert "Stopped after reaching the step limit" in stop_event["content"]
+
+
+def test_step_limit_summary_over_budget_does_not_compact_session_history(tmp_path):
+    agent = build_agent(tmp_path, ["<final>Continue from the latest tool result.</final>"])
+    agent.context_manager = ContextManager(
+        agent,
+        total_budget=100,
+        section_budgets={"prefix": 40, "memory": 40, "relevant_memory": 40, "history": 40},
+        section_floors={"prefix": 40, "memory": 40, "relevant_memory": 40, "history": 40},
+    )
+    for index in range(8):
+        agent.record({"role": "user", "content": f"old request {index} " + ("x" * 80)})
+        agent.record({"role": "assistant", "content": f"old answer {index} " + ("y" * 80)})
+    history_before = list(agent.session["history"])
+    compactions_before = agent.session.get("compactions")
+    original_build = agent.context_manager.build
+    build_metadata = []
+
+    def record_build(user_message, *, purpose):
+        result = original_build(user_message, purpose=purpose)
+        build_metadata.append((purpose, result.metadata["prompt_over_budget"]))
+        return result
+
+    agent.context_manager.build = record_build
+    agent.emit_trace = lambda *args, **kwargs: None
+
+    summary = request_step_limit_summary(
+        agent.engine,
+        TaskState.create(task_id="task_step_limit_summary", user_request="continue"),
+        "continue",
+    )
+
+    assert summary == "Continue from the latest tool result."
+    assert build_metadata == [("step_limit_summary", True)]
+    assert agent.session["history"] == history_before
+    assert agent.session.get("compactions") == compactions_before
