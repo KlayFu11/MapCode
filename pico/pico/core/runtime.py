@@ -650,7 +650,9 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         return bool(self.feature_flags.get(str(name), False))
 
     def prompt(self, user_message):
-        return self._build_prompt_and_metadata(user_message, purpose="main_model").prompt
+        return self._build_prompt_and_metadata(
+            user_message, purpose="prompt_preview"
+        ).prompt
 
     def record(self, item):
         self.session["history"].append(self.turn_history.enrich(item))
@@ -658,7 +660,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
 
     def prompt_metadata(self, user_message, prompt):
         return self._build_prompt_and_metadata(
-            user_message, purpose="main_model"
+            user_message, purpose="prompt_preview"
         ).metadata
 
     def _build_prompt_and_metadata(
@@ -668,7 +670,8 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.resume_state = self.evaluate_resume_state()
         build_result = self.context_manager.build(user_message, purpose=purpose)
         if (
-            build_result.metadata.get("prompt_over_budget")
+            purpose != "prompt_preview"
+            and build_result.metadata.get("prompt_over_budget")
             and len(self.session.get("history", [])) > 4
         ):
             self.compact_history(trigger="auto_prompt_over_budget")

@@ -1170,6 +1170,64 @@ def test_prompt_metadata_refreshes_prefix_when_workspace_changes(tmp_path):
     assert "demo changed" in agent.prefix
 
 
+def test_prompt_helpers_build_preview_without_model_or_run(tmp_path, monkeypatch):
+    agent = build_agent(tmp_path, [])
+    purposes = []
+    original_build = agent.context_manager.build
+
+    def record_purpose(user_message, *, purpose):
+        purposes.append(purpose)
+        return original_build(user_message, purpose=purpose)
+
+    monkeypatch.setattr(agent.context_manager, "build", record_purpose)
+
+    assert "Current user request:\npreview" in agent.prompt("preview")
+    metadata = agent.prompt_metadata("metadata preview", "")
+
+    assert metadata["current_request"]["text"] == "metadata preview"
+    assert purposes == ["prompt_preview", "prompt_preview"]
+    assert agent.model_client.prompts == []
+    assert agent.current_task_state is None
+    assert agent.current_run_dir is None
+
+
+def test_over_budget_prompt_preview_does_not_compact_session_history(tmp_path):
+    from pico.core.context_manager import ContextManager
+
+    agent = build_agent(tmp_path, [])
+    agent.context_manager = ContextManager(
+        agent,
+        total_budget=100,
+        section_budgets={
+            "prefix": 40,
+            "memory": 40,
+            "relevant_memory": 40,
+            "history": 40,
+        },
+        section_floors={
+            "prefix": 40,
+            "memory": 40,
+            "relevant_memory": 40,
+            "history": 40,
+        },
+    )
+    for index in range(8):
+        agent.record(
+            {
+                "role": "user" if index % 2 == 0 else "assistant",
+                "content": f"old history {index} " + ("x" * 80),
+                "created_at": f"2026-05-12T10:{index:02d}:00+00:00",
+            }
+    )
+    history_before_preview = list(agent.session["history"])
+
+    prompt = agent.prompt("preview only")
+
+    assert "Current user request:\npreview only" in prompt
+    assert agent.session["history"] == history_before_preview
+    assert "compactions" not in agent.session
+
+
 def test_agent_creates_checkpoint_when_context_reduction_happens_and_artifacts_only_reference_it(tmp_path):
     agent = build_agent(tmp_path, ["<final>Done after checkpoint.</final>"])
     for index in range(10):

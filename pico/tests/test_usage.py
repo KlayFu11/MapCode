@@ -42,6 +42,29 @@ def test_usage_command_reports_provider_model_and_last_usage(tmp_path):
     assert "last cached tokens: 3" in output
 
 
+def test_context_command_builds_preview_without_model_or_run(tmp_path, monkeypatch):
+    from pico.cli import handle_repl_command
+
+    agent = build_agent(tmp_path, [])
+    purposes = []
+    original_build = agent.context_manager.build
+
+    def record_purpose(user_message, *, purpose):
+        purposes.append(purpose)
+        return original_build(user_message, purpose=purpose)
+
+    monkeypatch.setattr(agent.context_manager, "build", record_purpose)
+
+    handled, _, output = handle_repl_command(agent, "/context")
+
+    assert handled is True
+    assert "total_estimated_tokens" in output
+    assert purposes == ["prompt_preview"]
+    assert agent.model_client.prompts == []
+    assert agent.current_task_state is None
+    assert agent.current_run_dir is None
+
+
 def test_model_command_updates_current_runtime_only(tmp_path):
     from pico.cli import handle_repl_command
 
