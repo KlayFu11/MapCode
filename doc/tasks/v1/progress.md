@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F5-02 迁移 Runtime wrapper 与 main model 调用点`
+- 下一可执行任务：`V1-F5-03 迁移 prompt preview 调用点`
 
 ## 阶段 0：固定施工地基
 
@@ -73,9 +73,9 @@
 ## 阶段 5：PromptPurpose 与 Repo Map 注入
 
 - [x] V1-F5-01 引入 PromptPurpose 和 PromptBuildResult (P0, 依赖 V1-F4-09/V1-F4-10)
-- [ ] V1-F5-02 迁移 Runtime wrapper 与 main model 调用点 (P0, 依赖 V1-F5-01)
+- [x] V1-F5-02 迁移 Runtime wrapper 与全部直接调用者 (P0, 依赖 V1-F5-01)
 - [ ] V1-F5-03 迁移 prompt preview 调用点 (P0, 依赖 V1-F5-02)
-- [ ] V1-F5-04 迁移 evaluation 与 step-limit summary 调用点 (P0, 依赖 V1-F5-03)
+- [ ] V1-F5-04 限制辅助 purpose 的 auto-compaction 并验证辅助调用 (P0, 依赖 V1-F5-03)
 - [ ] V1-F5-05 实现统一主模型导航模板与 fallback notice (P0, 依赖 V1-F5-04)
 - [ ] V1-F5-06 ContextManager 组装独立 repo_map section (P0, 依赖 V1-F5-05)
 - [ ] V1-F5-07 为完整 repo map 预留输入空间并缩减 base prompt (P0, 依赖 V1-F5-06)
@@ -190,3 +190,7 @@
 - 日期：2026-07-21
 - 执行任务：`V1-F5-01 引入 PromptPurpose 和 PromptBuildResult`。
 - 结果：`ContextManager.build()` 现在要求显式 keyword-only `purpose` 并返回 build-local `PromptBuildResult`；prompt 文本与既有 base-prompt reduction 不变，`repo_map_render` 仍为 `None`，metadata 记录七项 runtime-owned request-budget 字段。ContextManager 目标测试、Ruff 和 `git diff --check` 均通过。`V1-F5-02` 继续迁移旧 runtime 调用点。
+
+- 日期：2026-07-30
+- 执行任务：`V1-F5-02 迁移 Runtime wrapper 与全部直接调用者`。
+- 结果：`Pico._build_prompt_and_metadata()` 现在要求显式 `purpose` 并返回 build-local `PromptBuildResult`；main model、step-limit summary 与 evaluation 直接调用者分别使用 `main_model`、`step_limit_summary`、`evaluation`，全部适配 DTO 属性读取。任务拆分同步修正为：V1-F5-02 统一迁移直接调用者，V1-F5-04 只负责辅助 purpose 的 auto-compaction 约束。`runtime.py` 保持连续 wrapper 编排，恢复方法间空行并将行数预算由 990 调整为 1000（实际 991 行）。组合 pytest 88 passed、architecture 4 passed、Ruff 与 `git diff --check` 均通过；下一项为 `V1-F5-03`。

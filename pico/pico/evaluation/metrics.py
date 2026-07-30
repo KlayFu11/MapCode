@@ -177,7 +177,12 @@ def measure_feature_ablation_metrics(agent, user_message):
     results = {}
     for name, updates in variants.items():
         with _temporary_feature_flags(agent, updates):
-            prompt, metadata = agent._build_prompt_and_metadata(user_message)
+            prompt_build_result = agent._build_prompt_and_metadata(
+                user_message,
+                purpose="evaluation",
+            )
+        prompt = prompt_build_result.prompt
+        metadata = prompt_build_result.metadata
         results[name] = {
             "prompt_chars": int(metadata.get("prompt_chars", 0)),
             "memory_chars": int(metadata.get("sections", {}).get("memory", {}).get("rendered_chars", 0)),

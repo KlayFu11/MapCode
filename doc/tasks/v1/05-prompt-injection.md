@@ -36,53 +36,54 @@
 - **完成标准**：每次 build 都有独立结果对象，现有 prompt 内容保持不变。
 - **回退条件**：通过 ContextManager 可变共享状态传递 render。
 
-### V1-F5-02：迁移 Runtime wrapper 与 main model 调用点
+### V1-F5-02：迁移 Runtime wrapper 与全部直接调用者
 
 - **优先级**：P0
 - **依赖**：V1-F5-01
-- **输入**：当前最新 SPEC/PRD/FuncFlow、Runtime wrapper 与 Engine main loop
-- **输出**：Runtime wrapper 与全部主模型调用显式 `main_model`
-- **允许修改路径**：`pico/pico/core/runtime.py`、`pico/pico/core/engine.py`、相关测试
+- **输入**：当前最新 SPEC/PRD/FuncFlow、Runtime wrapper、全部 `_build_prompt_and_metadata()` 直接调用者
+- **输出**：无默认值的 Runtime wrapper、build-local `PromptBuildResult`，以及全部直接调用者的显式 purpose
+- **允许修改路径**：`pico/pico/core/runtime.py`、`pico/pico/core/engine.py`、`pico/pico/core/engine_helpers.py`、`pico/pico/evaluation/metrics.py`、相关测试
 - **禁止修改边界**：不得执行 MapContext preparation、artifact 或最终请求硬门禁
-- **步骤**：迁移 `_build_prompt_and_metadata()`、首次/后续主模型 build 和 PromptBuildResult 读取；保持模型调用行为不变。
+- **步骤**：迁移 `_build_prompt_and_metadata()`，保持 `purpose` 无默认值并返回 `PromptBuildResult`；Engine 主模型调用显式使用 `main_model`；step-limit summary 显式使用 `step_limit_summary`；evaluation 显式使用 `evaluation` 并读取 DTO 属性；保持现有调用行为不变。
 - **验证命令**：
   ```powershell
-  .\.venv\Scripts\python.exe -m pytest pico\tests\test_engine_acceptance.py pico\tests\test_pico.py -q
+  .\.venv\Scripts\python.exe -m pytest pico\tests\test_engine_acceptance.py pico\tests\test_pico.py pico\tests\test_metrics.py -q
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_architecture_boundaries.py -q
+  .\.venv\Scripts\python.exe -m ruff check pico\pico\core\runtime.py pico\pico\core\engine.py pico\pico\core\engine_helpers.py pico\pico\evaluation\metrics.py pico\tests\test_engine_acceptance.py pico\tests\test_metrics.py
   ```
-- **完成标准**：所有主模型 prompt build purpose 明确。
+- **完成标准**：不存在未传 `purpose` 的 `_build_prompt_and_metadata()` 直接调用；所有直接调用方适配 `PromptBuildResult` 返回契约。
 - **回退条件**：为行数门禁把连续主模型 prompt 控制流拆成无职责 helper。
 
 ### V1-F5-03：迁移 prompt preview 调用点
 
 - **优先级**：P0
 - **依赖**：V1-F5-02
-- **输入**：当前最新 SPEC/PRD/FuncFlow、CLI/context usage preview 调用点
+- **输入**：当前最新 SPEC/PRD/FuncFlow、`Pico.prompt()`、`Pico.prompt_metadata()` 与 CLI/context usage preview 调用点
 - **输出**：全部 preview 调用显式 `prompt_preview`
-- **允许修改路径**：runtime/CLI/usage preview 接缝与相关测试
+- **允许修改路径**：`pico/pico/core/runtime.py`、`pico/pico/cli.py`、usage preview 接缝与相关测试
 - **禁止修改边界**：不得写 artifact、覆盖首次主模型 render 或触发 auto-compaction
 - **步骤**：迁移所有 preview/context usage 调用点；保持 preview 只构建不持久化。
 - **验证命令**：
   ```powershell
-  .\.venv\Scripts\python.exe -m pytest pico\tests\test_context_governance_acceptance.py pico\tests\test_usage.py -q
+  .\.venv\Scripts\python.exe -m pytest pico\tests\test_context_governance_acceptance.py pico\tests\test_usage.py pico\tests\test_pico.py -q
   ```
 - **完成标准**：所有 preview 调用点 purpose 明确且无持久化副作用。
 - **回退条件**：preview 覆盖 main model render 或修改 session。
 
-### V1-F5-04：迁移 evaluation 与 step-limit summary 调用点
+### V1-F5-04：限制辅助 purpose 的 auto-compaction 并验证辅助调用
 
 - **优先级**：P0
 - **依赖**：V1-F5-03
-- **输入**：当前最新 SPEC/PRD/FuncFlow、evaluation 与 step-limit summary 调用点
-- **输出**：辅助 prompt 显式 purpose、无 repo map/auto-compaction 测试
+- **输入**：当前最新 SPEC/PRD/FuncFlow、已迁移的 evaluation 与 step-limit summary 调用点
+- **输出**：仅 main model 触发 auto-compaction，辅助 purpose 的无 auto-compaction 测试
 - **允许修改路径**：evaluation、engine helper、runtime wrapper 与对应测试
 - **禁止修改边界**：不得让辅助 purpose 注入 repo map 或修改 session
-- **步骤**：标记 evaluation/step_limit_summary；限制 auto-compaction 仅 main_model。
+- **步骤**：限制 auto-compaction 仅 `main_model`；验证 evaluation 与 step-limit summary 不触发 session compaction。
 - **验证命令**：
   ```powershell
-  .\.venv\Scripts\python.exe -m pytest pico\tests\test_context_governance_acceptance.py pico\tests\test_engine_acceptance.py -q
+  .\.venv\Scripts\python.exe -m pytest pico\tests\test_context_governance_acceptance.py pico\tests\test_engine_acceptance.py pico\tests\test_metrics.py -q
   ```
-- **完成标准**：所有 prompt build 调用点显式提供 purpose。
+- **完成标准**：辅助 purpose 不触发 session auto-compaction，且调用行为保持不变。
 - **回退条件**：辅助 prompt 覆盖主模型 render 状态或触发 session 变更。
 
 ### V1-F5-05：实现统一主模型导航模板与 fallback notice

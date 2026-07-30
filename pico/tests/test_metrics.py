@@ -2,12 +2,38 @@ import os
 from unittest.mock import patch
 
 from pico.evaluation.metrics import (
+    measure_feature_ablation_metrics,
     _provider_profile,
     run_context_ablation_v2,
     run_memory_ablation_v2,
     run_recovery_ablation_v2,
     write_benchmark_core_report,
 )
+from pico.testing import ScriptedModelClient
+from pico import Pico, SessionStore, WorkspaceContext
+
+
+def test_feature_ablation_uses_evaluation_prompt_build_result(tmp_path):
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    agent = Pico(
+        model_client=ScriptedModelClient([]),
+        workspace=WorkspaceContext.build(tmp_path),
+        session_store=SessionStore(tmp_path / ".pico" / "sessions"),
+        approval_policy="auto",
+    )
+    original_build = agent.context_manager.build
+    purposes = []
+
+    def record_purpose(user_message, *, purpose):
+        purposes.append(purpose)
+        return original_build(user_message, purpose=purpose)
+
+    agent.context_manager.build = record_purpose
+
+    metrics = measure_feature_ablation_metrics(agent, "inspect the workspace")
+
+    assert purposes == ["evaluation", "evaluation", "evaluation"]
+    assert metrics["full"]["current_request_preserved"] is True
 
 
 def test_run_context_ablation_v2_writes_expected_artifact(tmp_path):

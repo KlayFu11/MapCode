@@ -21,6 +21,7 @@ from .context_manager import ContextManager
 from .engine import Engine
 from . import model_output, tool_executor
 from .map_context import MapContextCoordinator
+from .map_context_prompt import PromptBuildResult, PromptPurpose
 from .model_request_budget import (
     DEFAULT_PROMPT_SAFETY_MARGIN_TOKENS,
     FALLBACK_MODEL_INPUT_BUDGET_TOKENS,
@@ -649,28 +650,33 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         return bool(self.feature_flags.get(str(name), False))
 
     def prompt(self, user_message):
-        prompt, _ = self._build_prompt_and_metadata(user_message)
-        return prompt
+        return self._build_prompt_and_metadata(user_message, purpose="main_model").prompt
 
     def record(self, item):
         self.session["history"].append(self.turn_history.enrich(item))
         self.session_path = self.session_store.save(self.session)
 
     def prompt_metadata(self, user_message, prompt):
-        _, metadata = self._build_prompt_and_metadata(user_message)
-        return metadata
+        return self._build_prompt_and_metadata(
+            user_message, purpose="main_model"
+        ).metadata
 
-    def _build_prompt_and_metadata(self, user_message):
+    def _build_prompt_and_metadata(
+        self, user_message, *, purpose: PromptPurpose
+    ) -> PromptBuildResult:
         refresh = self.refresh_prefix()
         self.resume_state = self.evaluate_resume_state()
-        prompt, metadata = self.context_manager.build(user_message)
+        build_result = self.context_manager.build(user_message, purpose=purpose)
         if (
-            metadata.get("prompt_over_budget")
+            build_result.metadata.get("prompt_over_budget")
             and len(self.session.get("history", [])) > 4
         ):
             self.compact_history(trigger="auto_prompt_over_budget")
-            prompt, metadata = self.context_manager.build(user_message)
+            build_result = self.context_manager.build(user_message, purpose=purpose)
+            metadata = dict(build_result.metadata)
             metadata["auto_compacted"] = True
+        else:
+            metadata = dict(build_result.metadata)
         # 这里把“这轮 prompt 是怎么拼出来的”连同缓存相关状态一起记下来，
         # 后面 trace/report 才能解释清楚：为什么这一轮 prefix 变了、缓存有没有命中。
         metadata.update(
@@ -710,7 +716,11 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             "context_usage": metadata.get("context_usage", {}),
         }
         self.session_event_bus.emit("context_usage_recorded", usage_payload)
-        return prompt, metadata
+        return PromptBuildResult(
+            prompt=build_result.prompt,
+            metadata=metadata,
+            repo_map_render=build_result.repo_map_render,
+        )
 
     def compact_history(self, trigger="manual", keep_recent_turns=2):
         return self.compact_manager.compact(

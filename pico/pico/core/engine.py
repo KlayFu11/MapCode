@@ -123,7 +123,11 @@ class Engine:
             task_state.record_attempt()
             agent.run_store.write_task_state(task_state)
             prompt_started_at = time.monotonic()
-            prompt, prompt_metadata = agent._build_prompt_and_metadata(user_message)
+            prompt_build_result = agent._build_prompt_and_metadata(
+                user_message, purpose="main_model"
+            )
+            prompt = prompt_build_result.prompt
+            prompt_metadata = dict(prompt_build_result.metadata)
             agent.emit_trace(
                 task_state,
                 "prompt_built",

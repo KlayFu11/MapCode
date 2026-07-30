@@ -34,6 +34,14 @@ def test_engine_streams_a_real_session_with_tool_artifacts(tmp_path):
             "<final>Wrote it.</final>",
         ],
     )
+    original_build = agent.context_manager.build
+    purposes = []
+
+    def record_purpose(user_message, *, purpose):
+        purposes.append(purpose)
+        return original_build(user_message, purpose=purpose)
+
+    agent.context_manager.build = record_purpose
 
     events = list(agent.engine.run_turn("create the result file"))
 
@@ -49,6 +57,7 @@ def test_engine_streams_a_real_session_with_tool_artifacts(tmp_path):
         "turn_finished",
     ]
     assert events[-2]["content"] == "Wrote it."
+    assert purposes == ["main_model", "main_model"]
     assert (tmp_path / "notes" / "result.txt").read_text(encoding="utf-8") == "ok\n"
 
     persisted_events = read_jsonl(agent.session_event_bus.path)

@@ -227,7 +227,11 @@ def request_step_limit_summary(engine, task_state, user_message):
     agent = engine.runtime
     started_at = time.monotonic()
     try:
-        prompt, _ = agent._build_prompt_and_metadata(_STEP_LIMIT_SUMMARY_NOTICE)
+        prompt_build_result = agent._build_prompt_and_metadata(
+            _STEP_LIMIT_SUMMARY_NOTICE,
+            purpose="step_limit_summary",
+        )
+        prompt = prompt_build_result.prompt
         result = complete_model(
             agent.model_client, prompt, agent.max_new_tokens
         )
