@@ -124,7 +124,7 @@ class ContextManager:
             CURRENT_REQUEST_SECTION: f"Current user request:\n{user_message}",
         }
         repo_map_render = self._render_repo_map_section(purpose)
-        if repo_map_render is not None:
+        if repo_map_render is not None and repo_map_render.section_rendered:
             section_texts[REPO_MAP_SECTION] = repo_map_render.section_text
         section_order = self._section_order(section_texts)
         base_section_order = tuple(
@@ -151,6 +151,21 @@ class ContextManager:
                 selected_notes=selected_notes,
             )
             base_prompt = self._assemble_prompt(rendered, base_section_order)
+            if self._repo_map_must_be_omitted(
+                repo_map_render,
+                base_prompt,
+                base_prompt_budget,
+            ):
+                repo_map_render = self._omit_repo_map_section(repo_map_render)
+                section_texts.pop(REPO_MAP_SECTION, None)
+                section_order = self._section_order(section_texts)
+                base_prompt_budget = self._base_prompt_budget(repo_map_render)
+                rendered = self._render_sections_without_reduction(
+                    section_texts,
+                    section_order,
+                    selected_notes=selected_notes,
+                )
+                base_prompt = self._assemble_prompt(rendered, base_section_order)
             prompt = self._assemble_prompt(rendered, section_order)
             metadata = self._metadata(
                 prompt=prompt,
@@ -226,6 +241,22 @@ class ContextManager:
             base_prompt_budget,
             reduction_log,
         )
+        if self._repo_map_must_be_omitted(
+            repo_map_render,
+            base_prompt,
+            base_prompt_budget,
+        ):
+            repo_map_render = self._omit_repo_map_section(repo_map_render)
+            section_texts.pop(REPO_MAP_SECTION, None)
+            section_order = self._section_order(section_texts)
+            base_prompt_budget = self._base_prompt_budget(repo_map_render)
+            rendered = self._render_sections(
+                section_texts,
+                budgets,
+                section_order,
+                selected_notes=selected_notes,
+            )
+            base_prompt = self._assemble_prompt(rendered, base_section_order)
         prompt = self._assemble_prompt(rendered, section_order)
 
         metadata = self._metadata(
@@ -287,6 +318,25 @@ class ContextManager:
             base_prompt_reduction_applied=(
                 reservation_reduced_base_budget and bool(reduction_log)
             ),
+        )
+
+    def _repo_map_must_be_omitted(
+        self,
+        repo_map_render,
+        base_prompt,
+        base_prompt_budget,
+    ):
+        return (
+            repo_map_render is not None
+            and repo_map_render.section_rendered
+            and len(base_prompt) > base_prompt_budget["effective_chars"]
+        )
+
+    def _omit_repo_map_section(self, repo_map_render):
+        return RepoMapSectionRender.omitted(
+            "base_prompt_cannot_fit_with_repo_map_reservation",
+            map_body_raw_chars=repo_map_render.map_body_raw_chars,
+            base_prompt_reduction_applied=repo_map_render.base_prompt_reduction_applied,
         )
 
     def _render_sections_without_reduction(
@@ -460,25 +510,38 @@ class ContextManager:
         if map_context is None:
             return None
 
-        map_body = str(map_context.active_result.repo_map_text)
-        section_text = render_repo_map_navigation_text(map_context)
-        is_broad_fallback = (
-            map_context.stage == "fallback"
-            and map_context.selection_decision is not None
-            and map_context.selection_decision.fallback_mode == "broad_map"
-        )
-        return RepoMapSectionRender(
-            section_text=section_text,
-            section_rendered=True,
-            contract_rendered=True,
-            fallback_notice_rendered=is_broad_fallback,
-            map_body_raw_chars=len(map_body),
-            map_body_rendered_chars=len(map_body),
-            section_rendered_chars=len(section_text),
-            section_rendered_hash=hash_repo_map_section_text(section_text),
-            base_prompt_reduction_applied=False,
-            omission_reason=None,
-        )
+        try:
+            map_body = str(map_context.active_result.repo_map_text)
+            section_text = render_repo_map_navigation_text(map_context)
+            is_broad_fallback = (
+                map_context.stage == "fallback"
+                and map_context.selection_decision is not None
+                and map_context.selection_decision.fallback_mode == "broad_map"
+            )
+            return RepoMapSectionRender(
+                section_text=section_text,
+                section_rendered=True,
+                contract_rendered=True,
+                fallback_notice_rendered=is_broad_fallback,
+                map_body_raw_chars=len(map_body),
+                map_body_rendered_chars=len(map_body),
+                section_rendered_chars=len(section_text),
+                section_rendered_hash=hash_repo_map_section_text(section_text),
+                base_prompt_reduction_applied=False,
+                omission_reason=None,
+            )
+        except Exception:
+            return RepoMapSectionRender.omitted(
+                "repo_map_section_render_failed",
+                map_body_raw_chars=self._repo_map_body_raw_chars(map_context),
+                base_prompt_reduction_applied=False,
+            )
+
+    def _repo_map_body_raw_chars(self, map_context):
+        try:
+            return len(str(map_context.active_result.repo_map_text))
+        except Exception:
+            return 0
 
     def _assemble_prompt(self, rendered, section_order):
         # 顺序是刻意设计的：稳定规则放前面，最新请求放最后。

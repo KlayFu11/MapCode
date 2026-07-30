@@ -5,7 +5,7 @@ import pytest
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.core.context_manager import ContextManager
-from pico.core.map_context_prompt import PromptBuildResult
+from pico.core.map_context_prompt import EMPTY_REPO_MAP_SECTION_HASH, PromptBuildResult
 from pico.core.model_request_budget import (
     MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
     ModelRequestBudget,
@@ -221,6 +221,81 @@ def test_context_manager_reserves_complete_repo_map_before_reducing_base_section
     assert metadata["map_context"]["base_prompt_reduction_applied"] is True
     assert render.map_body_rendered_chars == render.map_body_raw_chars
     assert render.section_text.endswith("M" * 800)
+
+
+def test_context_manager_omits_repo_map_when_base_prompt_cannot_fit_at_floors(tmp_path):
+    model_request_budget = ModelRequestBudget(
+        provider="test",
+        model="test-model",
+        model_input_budget_tokens=320,
+        prompt_safety_margin_tokens=40,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="explicit",
+    )
+    agent = build_agent(tmp_path, [], model_request_budget=model_request_budget)
+    agent.prefix = "PREFIX " + ("A" * 1_000)
+    agent.memory.render_memory_text = lambda: "MEMORY " + ("B" * 800)
+    map_body = "pico/core/context_manager.py:\n" + ("M" * 800)
+    set_current_map(agent, repo_map_text=map_body)
+    manager = ContextManager(
+        agent,
+        total_budget=3_000,
+        section_budgets={
+            "prefix": 1_000,
+            "memory": 800,
+            "skills": 120,
+            "relevant_memory": 120,
+            "history": 120,
+        },
+    )
+
+    result = build_result(manager, "Inspect the complete map.")
+    render = result.repo_map_render
+
+    assert render.section_rendered is False
+    assert render.section_text == ""
+    assert render.contract_rendered is False
+    assert render.map_body_raw_chars == len(map_body)
+    assert render.map_body_rendered_chars == 0
+    assert render.section_rendered_hash == EMPTY_REPO_MAP_SECTION_HASH
+    assert render.omission_reason == "base_prompt_cannot_fit_with_repo_map_reservation"
+    assert render.base_prompt_reduction_applied is True
+    assert "[Repo Map - Navigation Context Only]" not in result.prompt
+    assert map_body not in result.prompt
+    assert result.metadata["active_repo_map_reservation_tokens"] == 0
+    assert result.metadata["base_prompt_budget_tokens"] == 280
+    assert result.metadata["estimated_request_tokens"] == model_request_budget.estimate_request_tokens(result.prompt)
+    assert result.metadata["request_over_budget"] is model_request_budget.request_over_budget(result.prompt)
+    assert "repo_map" not in result.metadata["section_order"]
+    assert result.metadata["map_context"]["omission_reason"] == render.omission_reason
+
+
+def test_context_manager_omits_repo_map_when_renderer_fails(tmp_path, monkeypatch):
+    agent = build_agent(tmp_path, [])
+    map_body = "pico/core/context_manager.py:\n  class ContextManager"
+    set_current_map(agent, repo_map_text=map_body)
+    manager = ContextManager(agent)
+
+    def fail_render(_map_context):
+        raise RuntimeError("fixture renderer failure")
+
+    monkeypatch.setattr(
+        "pico.core.context_manager.render_repo_map_navigation_text",
+        fail_render,
+    )
+
+    result = build_result(manager, "Inspect the complete map.")
+    render = result.repo_map_render
+
+    assert render.section_rendered is False
+    assert render.section_text == ""
+    assert render.map_body_raw_chars == len(map_body)
+    assert render.section_rendered_hash == EMPTY_REPO_MAP_SECTION_HASH
+    assert render.omission_reason == "repo_map_section_render_failed"
+    assert "[Repo Map - Navigation Context Only]" not in result.prompt
+    assert result.metadata["active_repo_map_reservation_tokens"] == 0
+    assert "repo_map" not in result.metadata["section_order"]
+    assert result.metadata["map_context"]["omission_reason"] == render.omission_reason
 
 
 def test_context_manager_marks_broad_fallback_notice_in_repo_map_render(tmp_path):
