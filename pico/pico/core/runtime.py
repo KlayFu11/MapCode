@@ -671,7 +671,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         build_result = self.context_manager.build(user_message, purpose=purpose)
         if (
             purpose == "main_model"
-            and build_result.metadata.get("prompt_over_budget")
+            and build_result.metadata.get("base_prompt_over_budget")
             and len(self.session.get("history", [])) > 4
         ):
             self.compact_history(trigger="auto_prompt_over_budget")

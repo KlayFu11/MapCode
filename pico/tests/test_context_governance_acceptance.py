@@ -1,8 +1,13 @@
 import json
+from types import SimpleNamespace
 
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.core.context_manager import ContextManager
+from pico.core.model_request_budget import (
+    MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+    ModelRequestBudget,
+)
 
 
 def build_agent(tmp_path, outputs=None, **kwargs):
@@ -98,5 +103,57 @@ def test_prompt_over_budget_triggers_auto_compaction_during_real_turn(tmp_path):
 
     assert agent.ask("finish") == "done"
 
+    assert agent.last_prompt_metadata["auto_compacted"] is True
+    assert any(item["trigger"] == "auto_prompt_over_budget" for item in agent.session["compactions"])
+
+
+def test_auto_compaction_uses_repo_map_reserved_base_prompt_budget(tmp_path):
+    model_request_budget = ModelRequestBudget(
+        provider="test",
+        model="test-model",
+        model_input_budget_tokens=450,
+        prompt_safety_margin_tokens=20,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="explicit",
+    )
+    agent = build_agent(tmp_path, ["<final>done</final>"], model_request_budget=model_request_budget)
+    agent.prefix = "PREFIX " + ("P" * 300)
+    agent.context_manager = ContextManager(
+        agent,
+        total_budget=1_000,
+        section_budgets={
+            "prefix": 320,
+            "memory": 80,
+            "skills": 80,
+            "relevant_memory": 80,
+            "history": 320,
+        },
+        section_floors={
+            "prefix": 320,
+            "memory": 80,
+            "skills": 80,
+            "relevant_memory": 80,
+            "history": 320,
+        },
+    )
+    agent.current_map_context = SimpleNamespace(
+        branch="specific",
+        stage="execution",
+        active_result=SimpleNamespace(
+            focus_fnames=("pico/core/context_manager.py",),
+            repo_map_text="pico/core/context_manager.py:\n" + ("M" * 600),
+        ),
+        selection_decision=None,
+    )
+    for index in range(8):
+        agent.record({"role": "user", "content": f"old request {index} " + ("x" * 80)})
+        agent.record({"role": "assistant", "content": f"old answer {index} " + ("y" * 80)})
+
+    assert agent.ask("finish") == "done"
+
+    assert agent.last_prompt_metadata["base_prompt_chars"] > (
+        agent.last_prompt_metadata["effective_base_prompt_budget_chars"]
+    )
+    assert agent.last_prompt_metadata["base_prompt_over_budget"] is True
     assert agent.last_prompt_metadata["auto_compacted"] is True
     assert any(item["trigger"] == "auto_prompt_over_budget" for item in agent.session["compactions"])

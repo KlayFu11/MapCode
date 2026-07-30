@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ..features import memory as memorylib, skills as skillslib
 from .context_usage import ContextUsageAnalyzer
@@ -127,6 +127,10 @@ class ContextManager:
         if repo_map_render is not None:
             section_texts[REPO_MAP_SECTION] = repo_map_render.section_text
         section_order = self._section_order(section_texts)
+        base_section_order = tuple(
+            section for section in section_order if section != REPO_MAP_SECTION
+        )
+        base_prompt_budget = self._base_prompt_budget(repo_map_render)
         if hasattr(self.agent, "todo_ledger"):
             section_texts["memory"] += "\n\n" + self.agent.todo_ledger.render_prompt()
         checkpoint_text = ""
@@ -146,9 +150,12 @@ class ContextManager:
                 section_order,
                 selected_notes=selected_notes,
             )
+            base_prompt = self._assemble_prompt(rendered, base_section_order)
             prompt = self._assemble_prompt(rendered, section_order)
             metadata = self._metadata(
                 prompt=prompt,
+                base_prompt=base_prompt,
+                base_prompt_budget=base_prompt_budget,
                 rendered=rendered,
                 budgets={
                     section: render.budget
@@ -175,15 +182,15 @@ class ContextManager:
             section_order,
             selected_notes=selected_notes,
         )
-        prompt = self._assemble_prompt(rendered, section_order)
+        base_prompt = self._assemble_prompt(rendered, base_section_order)
         reduction_log = []
 
         # 如果 prompt 超预算，就按固定顺序不断压缩。
         # 这里的顺序体现了平台偏好：
         # 先牺牲 relevant_memory，再牺牲 history，然后才动 memory 和 prefix。
         # 最新用户请求永远不裁剪，因为那是本轮最重要的输入。
-        while len(prompt) > self.total_budget:
-            overflow = len(prompt) - self.total_budget
+        while len(base_prompt) > base_prompt_budget["effective_chars"]:
+            overflow = len(base_prompt) - base_prompt_budget["effective_chars"]
             reduced = False
             for section in self.reduction_order:
                 floor = int(self.section_floors.get(section, 0))
@@ -208,14 +215,23 @@ class ContextManager:
                     section_order,
                     selected_notes=selected_notes,
                 )
-                prompt = self._assemble_prompt(rendered, section_order)
+                base_prompt = self._assemble_prompt(rendered, base_section_order)
                 reduced = True
                 break
             if not reduced:
                 break
 
+        repo_map_render = self._with_base_prompt_reduction(
+            repo_map_render,
+            base_prompt_budget,
+            reduction_log,
+        )
+        prompt = self._assemble_prompt(rendered, section_order)
+
         metadata = self._metadata(
             prompt=prompt,
+            base_prompt=base_prompt,
+            base_prompt_budget=base_prompt_budget,
             rendered=rendered,
             budgets=budgets,
             reduction_log=reduction_log,
@@ -229,6 +245,48 @@ class ContextManager:
             prompt=prompt,
             metadata=metadata,
             repo_map_render=repo_map_render,
+        )
+
+    def _base_prompt_budget(self, repo_map_render):
+        model_request_budget = self.agent.model_request_budget
+        reservation_tokens = (
+            0
+            if repo_map_render is None
+            else model_request_budget.estimate_request_tokens(
+                repo_map_render.section_text
+            )
+        )
+        base_prompt_budget_tokens = max(
+            0,
+            model_request_budget.model_input_budget_tokens
+            - reservation_tokens
+            - model_request_budget.prompt_safety_margin_tokens,
+        )
+        return {
+            "reservation_tokens": reservation_tokens,
+            "base_prompt_budget_tokens": base_prompt_budget_tokens,
+            "effective_chars": min(
+                self.total_budget,
+                base_prompt_budget_tokens * 4,
+            ),
+        }
+
+    def _with_base_prompt_reduction(
+        self,
+        repo_map_render,
+        base_prompt_budget,
+        reduction_log,
+    ):
+        if repo_map_render is None:
+            return None
+        reservation_reduced_base_budget = (
+            base_prompt_budget["effective_chars"] < self.total_budget
+        )
+        return replace(
+            repo_map_render,
+            base_prompt_reduction_applied=(
+                reservation_reduced_base_budget and bool(reduction_log)
+            ),
         )
 
     def _render_sections_without_reduction(
@@ -429,6 +487,8 @@ class ContextManager:
     def _metadata(
         self,
         prompt,
+        base_prompt,
+        base_prompt_budget,
         rendered,
         budgets,
         reduction_log,
@@ -439,13 +499,6 @@ class ContextManager:
         repo_map_render,
     ):
         model_request_budget = self.agent.model_request_budget
-        active_repo_map_reservation_tokens = 0
-        base_prompt_budget_tokens = max(
-            0,
-            model_request_budget.model_input_budget_tokens
-            - active_repo_map_reservation_tokens
-            - model_request_budget.prompt_safety_margin_tokens,
-        )
         section_metadata = {}
         for section in section_order:
             if section == CURRENT_REQUEST_SECTION:
@@ -463,14 +516,21 @@ class ContextManager:
         metadata = {
             "model_input_budget_tokens": model_request_budget.model_input_budget_tokens,
             "prompt_safety_margin_tokens": model_request_budget.prompt_safety_margin_tokens,
-            "active_repo_map_reservation_tokens": active_repo_map_reservation_tokens,
-            "base_prompt_budget_tokens": base_prompt_budget_tokens,
+            "active_repo_map_reservation_tokens": base_prompt_budget["reservation_tokens"],
+            "base_prompt_budget_tokens": base_prompt_budget["base_prompt_budget_tokens"],
+            "effective_base_prompt_budget_chars": base_prompt_budget["effective_chars"],
+            "base_prompt_chars": len(base_prompt),
             "estimated_request_tokens": model_request_budget.estimate_request_tokens(prompt),
             "request_over_budget": model_request_budget.request_over_budget(prompt),
             "model_request_budget_source": model_request_budget.source,
             "prompt_chars": len(prompt),
             "prompt_budget_chars": self.total_budget,
-            "prompt_over_budget": len(prompt) > self.total_budget,
+            "base_prompt_over_budget": (
+                len(base_prompt) > base_prompt_budget["effective_chars"]
+            ),
+            "prompt_over_budget": (
+                len(base_prompt) > base_prompt_budget["effective_chars"]
+            ),
             "section_order": list(section_order),
             "section_budgets": {
                 section: (None if section == CURRENT_REQUEST_SECTION else int(budgets.get(section, 0)))

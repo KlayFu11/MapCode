@@ -168,6 +168,61 @@ def test_context_manager_injects_complete_build_local_repo_map_for_main_and_prev
     assert agent.current_map_context.active_result.repo_map_text == map_body
 
 
+def test_context_manager_reserves_complete_repo_map_before_reducing_base_sections(tmp_path):
+    model_request_budget = ModelRequestBudget(
+        provider="test",
+        model="test-model",
+        model_input_budget_tokens=800,
+        prompt_safety_margin_tokens=40,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="explicit",
+    )
+    agent = build_agent(tmp_path, [], model_request_budget=model_request_budget)
+    agent.prefix = "PREFIX " + ("A" * 1_200)
+    agent.memory.render_memory_text = lambda: "MEMORY " + ("B" * 900)
+    agent.record({"role": "user", "content": "old request " + ("C" * 600)})
+    set_current_map(
+        agent,
+        focus_fnames=("pico/core/context_manager.py",),
+        repo_map_text="pico/core/context_manager.py:\n" + ("M" * 800),
+    )
+    manager = ContextManager(
+        agent,
+        total_budget=3_000,
+        section_budgets={
+            "prefix": 1_200,
+            "memory": 900,
+            "skills": 120,
+            "relevant_memory": 120,
+            "history": 900,
+        },
+    )
+
+    result = build_result(manager, "Inspect this complete map.")
+    metadata = result.metadata
+    render = result.repo_map_render
+
+    assert metadata["active_repo_map_reservation_tokens"] == (
+        model_request_budget.estimate_request_tokens(render.section_text)
+    )
+    assert metadata["base_prompt_budget_tokens"] == (
+        model_request_budget.model_input_budget_tokens
+        - metadata["active_repo_map_reservation_tokens"]
+        - model_request_budget.prompt_safety_margin_tokens
+    )
+    assert metadata["effective_base_prompt_budget_chars"] == min(
+        manager.total_budget,
+        metadata["base_prompt_budget_tokens"] * 4,
+    )
+    assert metadata["base_prompt_chars"] <= metadata["effective_base_prompt_budget_chars"]
+    assert metadata["base_prompt_over_budget"] is False
+    assert metadata["budget_reductions"]
+    assert render.base_prompt_reduction_applied is True
+    assert metadata["map_context"]["base_prompt_reduction_applied"] is True
+    assert render.map_body_rendered_chars == render.map_body_raw_chars
+    assert render.section_text.endswith("M" * 800)
+
+
 def test_context_manager_marks_broad_fallback_notice_in_repo_map_render(tmp_path):
     agent = build_agent(tmp_path, [])
     set_current_map(
