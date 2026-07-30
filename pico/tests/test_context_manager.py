@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from pico.testing import ScriptedModelClient
@@ -30,6 +32,30 @@ def build_agent(tmp_path, outputs, **kwargs):
 
 def build_result(manager, user_message):
     return manager.build(user_message, purpose="main_model")
+
+
+def set_current_map(
+    agent,
+    *,
+    branch="specific",
+    stage="execution",
+    focus_fnames=(),
+    repo_map_text="repo map body",
+    fallback_mode=None,
+):
+    agent.current_map_context = SimpleNamespace(
+        branch=branch,
+        stage=stage,
+        active_result=SimpleNamespace(
+            focus_fnames=focus_fnames,
+            repo_map_text=repo_map_text,
+        ),
+        selection_decision=(
+            None
+            if fallback_mode is None
+            else SimpleNamespace(fallback_mode=fallback_mode)
+        ),
+    )
 
 
 def test_context_manager_requires_explicit_prompt_purpose(tmp_path):
@@ -88,6 +114,91 @@ def test_context_manager_assembles_sections_in_expected_order(tmp_path):
     assert prompt.index("Transcript:") < prompt.index("Current user request:")
     assert prompt.rstrip().endswith("Current user request:\nWhere is the deploy key?")
     assert metadata["section_order"] == ["prefix", "memory", "skills", "relevant_memory", "history", "current_request"]
+
+
+def test_context_manager_injects_complete_build_local_repo_map_for_main_and_preview(tmp_path):
+    agent = build_agent(tmp_path, [])
+    agent.record({"role": "user", "content": "old request", "created_at": "2026-04-07T09:59:00+00:00"})
+    map_body = "pico/core/context_manager.py:\n  class ContextManager\n" + ("x" * 800)
+    set_current_map(
+        agent,
+        focus_fnames=("pico/core/context_manager.py",),
+        repo_map_text=map_body,
+    )
+    manager = ContextManager(agent)
+
+    main_result = manager.build("Inspect the prompt.", purpose="main_model")
+    preview_result = manager.build("Inspect the prompt.", purpose="prompt_preview")
+
+    for result in (main_result, preview_result):
+        render = result.repo_map_render
+
+        assert result.prompt.index("Transcript:") < result.prompt.index("[Repo Map - Navigation Context Only]")
+        assert result.prompt.index("[Repo Map - Navigation Context Only]") < result.prompt.index("Current user request:")
+        assert result.prompt.endswith("Current user request:\nInspect the prompt.")
+        assert result.metadata["section_order"] == [
+            "prefix",
+            "memory",
+            "skills",
+            "relevant_memory",
+            "history",
+            "repo_map",
+            "current_request",
+        ]
+        assert result.metadata["sections"]["repo_map"] == {
+            "raw_chars": len(render.section_text),
+            "budget_chars": 0,
+            "rendered_chars": len(render.section_text),
+        }
+        assert result.metadata["map_context"] == {
+            "section_rendered": True,
+            "contract_rendered": True,
+            "fallback_notice_rendered": False,
+            "map_body_raw_chars": len(map_body),
+            "map_body_rendered_chars": len(map_body),
+            "section_rendered_chars": len(render.section_text),
+            "section_rendered_hash": render.section_rendered_hash,
+            "base_prompt_reduction_applied": False,
+            "omission_reason": None,
+        }
+        assert render.section_text.endswith(map_body)
+        assert render.map_body_raw_chars == render.map_body_rendered_chars
+
+    assert main_result.repo_map_render is not preview_result.repo_map_render
+    assert agent.current_map_context.active_result.repo_map_text == map_body
+
+
+def test_context_manager_marks_broad_fallback_notice_in_repo_map_render(tmp_path):
+    agent = build_agent(tmp_path, [])
+    set_current_map(
+        agent,
+        branch="fuzzy",
+        stage="fallback",
+        focus_fnames=(),
+        repo_map_text="broad repo map body",
+        fallback_mode="broad_map",
+    )
+
+    result = build_result(ContextManager(agent), "Inspect the prompt.")
+
+    assert result.repo_map_render.fallback_notice_rendered is True
+    assert result.metadata["map_context"]["fallback_notice_rendered"] is True
+    assert "Mode: broad_fallback" in result.prompt
+    assert "No specific focus files were confirmed." in result.prompt
+
+
+@pytest.mark.parametrize("purpose", ["evaluation", "step_limit_summary"])
+def test_context_manager_excludes_repo_map_for_auxiliary_purposes(tmp_path, purpose):
+    agent = build_agent(tmp_path, [])
+    set_current_map(agent, repo_map_text="repo map body " + ("x" * 800))
+
+    result = ContextManager(agent).build("Inspect the prompt.", purpose=purpose)
+
+    assert "[Repo Map - Navigation Context Only]" not in result.prompt
+    assert "repo_map" not in result.metadata["section_order"]
+    assert "map_context" not in result.metadata
+    assert result.repo_map_render is None
+    assert agent.current_map_context.active_result.repo_map_text.endswith("x" * 800)
 
 
 def test_context_manager_reduces_relevant_memory_before_history_and_preserves_newer_context(tmp_path):

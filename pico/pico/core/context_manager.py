@@ -10,7 +10,13 @@ from dataclasses import dataclass
 
 from ..features import memory as memorylib, skills as skillslib
 from .context_usage import ContextUsageAnalyzer
-from .map_context_prompt import PromptBuildResult, PromptPurpose
+from .map_context_prompt import (
+    RepoMapSectionRender,
+    PromptBuildResult,
+    PromptPurpose,
+    hash_repo_map_section_text,
+    render_repo_map_navigation_text,
+)
 from .turn_history import TurnHistoryBuilder, tail_clip
 
 DEFAULT_TOTAL_BUDGET = 60000
@@ -30,8 +36,17 @@ DEFAULT_SECTION_FLOORS = {
 }
 # 当 prompt 超预算时，会优先压缩这些 section。
 DEFAULT_REDUCTION_ORDER = ("relevant_memory", "skills", "history", "memory", "prefix")
-SECTION_ORDER = ("prefix", "memory", "skills", "relevant_memory", "history", "current_request")
+SECTION_ORDER = (
+    "prefix",
+    "memory",
+    "skills",
+    "relevant_memory",
+    "history",
+    "repo_map",
+    "current_request",
+)
 CURRENT_REQUEST_SECTION = "current_request"
+REPO_MAP_SECTION = "repo_map"
 RELEVANT_MEMORY_LIMIT = 3
 
 
@@ -108,6 +123,10 @@ class ContextManager:
             "history": "",
             CURRENT_REQUEST_SECTION: f"Current user request:\n{user_message}",
         }
+        repo_map_render = self._render_repo_map_section(purpose)
+        if repo_map_render is not None:
+            section_texts[REPO_MAP_SECTION] = repo_map_render.section_text
+        section_order = self._section_order(section_texts)
         if hasattr(self.agent, "todo_ledger"):
             section_texts["memory"] += "\n\n" + self.agent.todo_ledger.render_prompt()
         checkpoint_text = ""
@@ -122,26 +141,41 @@ class ContextManager:
             selected_notes = self.agent.memory.retrieval_candidates(user_message, limit=RELEVANT_MEMORY_LIMIT)
 
         if not context_reduction_enabled:
-            rendered = self._render_sections_without_reduction(section_texts, selected_notes=selected_notes)
-            prompt = self._assemble_prompt(rendered)
+            rendered = self._render_sections_without_reduction(
+                section_texts,
+                section_order,
+                selected_notes=selected_notes,
+            )
+            prompt = self._assemble_prompt(rendered, section_order)
             metadata = self._metadata(
                 prompt=prompt,
                 rendered=rendered,
-                budgets={section: render.budget for section, render in rendered.items() if section != CURRENT_REQUEST_SECTION},
+                budgets={
+                    section: render.budget
+                    for section, render in rendered.items()
+                    if section != CURRENT_REQUEST_SECTION
+                },
                 reduction_log=[],
                 selected_notes=selected_notes,
                 user_message=user_message,
                 section_texts=section_texts,
+                section_order=section_order,
+                repo_map_render=repo_map_render,
             )
             return PromptBuildResult(
                 prompt=prompt,
                 metadata=metadata,
-                repo_map_render=None,
+                repo_map_render=repo_map_render,
             )
 
         budgets = dict(self.section_budgets)
-        rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes)
-        prompt = self._assemble_prompt(rendered)
+        rendered = self._render_sections(
+            section_texts,
+            budgets,
+            section_order,
+            selected_notes=selected_notes,
+        )
+        prompt = self._assemble_prompt(rendered, section_order)
         reduction_log = []
 
         # 如果 prompt 超预算，就按固定顺序不断压缩。
@@ -168,8 +202,13 @@ class ContextManager:
                     }
                 )
                 budgets[section] = new_budget
-                rendered = self._render_sections(section_texts, budgets, selected_notes=selected_notes)
-                prompt = self._assemble_prompt(rendered)
+                rendered = self._render_sections(
+                    section_texts,
+                    budgets,
+                    section_order,
+                    selected_notes=selected_notes,
+                )
+                prompt = self._assemble_prompt(rendered, section_order)
                 reduced = True
                 break
             if not reduced:
@@ -183,14 +222,21 @@ class ContextManager:
             selected_notes=selected_notes,
             user_message=user_message,
             section_texts=section_texts,
+            section_order=section_order,
+            repo_map_render=repo_map_render,
         )
         return PromptBuildResult(
             prompt=prompt,
             metadata=metadata,
-            repo_map_render=None,
+            repo_map_render=repo_map_render,
         )
 
-    def _render_sections_without_reduction(self, section_texts, selected_notes=None):
+    def _render_sections_without_reduction(
+        self,
+        section_texts,
+        section_order,
+        selected_notes=None,
+    ):
         selected_notes = selected_notes or []
         relevant_lines = ["Relevant memory:"]
         if selected_notes:
@@ -200,7 +246,7 @@ class ContextManager:
         relevant_raw = "\n".join(relevant_lines)
         history = list(getattr(self.agent, "session", {}).get("history", []))
         history_raw = self.history_builder.raw_text(history)
-        return {
+        rendered = {
             "prefix": SectionRender(raw=section_texts["prefix"], budget=len(section_texts["prefix"]), rendered=section_texts["prefix"], details={}),
             "memory": SectionRender(raw=section_texts["memory"], budget=len(section_texts["memory"]), rendered=section_texts["memory"], details={}),
             "skills": SectionRender(raw=section_texts["skills"], budget=len(section_texts["skills"]), rendered=section_texts["skills"], details={}),
@@ -224,6 +270,15 @@ class ContextManager:
                 details={},
             ),
         }
+        if REPO_MAP_SECTION in section_order:
+            repo_map_text = section_texts[REPO_MAP_SECTION]
+            rendered[REPO_MAP_SECTION] = SectionRender(
+                raw=repo_map_text,
+                budget=0,
+                rendered=repo_map_text,
+                details={},
+            )
+        return rendered
 
     def _compute_section_floors(self):
         floors = {
@@ -233,11 +288,14 @@ class ContextManager:
         floors.update(self._section_floor_overrides)
         return floors
 
-    def _render_sections(self, section_texts, budgets, selected_notes=None):
+    def _render_sections(self, section_texts, budgets, section_order, selected_notes=None):
         rendered = {}
-        for section in SECTION_ORDER:
+        for section in section_order:
             budget = budgets.get(section)
             if section == CURRENT_REQUEST_SECTION:
+                raw = section_texts[section]
+                rendered[section] = SectionRender(raw=raw, budget=0, rendered=raw, details={})
+            elif section == REPO_MAP_SECTION:
                 raw = section_texts[section]
                 rendered[section] = SectionRender(raw=raw, budget=0, rendered=raw, details={})
             elif section == "relevant_memory":
@@ -332,11 +390,54 @@ class ContextManager:
             details=history_details,
         )
 
-    def _assemble_prompt(self, rendered):
-        # 顺序是刻意设计的：稳定规则放前面，最新请求放最后。
-        return "\n\n".join(rendered[section].rendered for section in SECTION_ORDER).strip()
+    def _section_order(self, section_texts):
+        if REPO_MAP_SECTION in section_texts:
+            return SECTION_ORDER
+        return tuple(section for section in SECTION_ORDER if section != REPO_MAP_SECTION)
 
-    def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts):
+    def _render_repo_map_section(self, purpose):
+        if purpose not in {"main_model", "prompt_preview"}:
+            return None
+        map_context = getattr(self.agent, "current_map_context", None)
+        if map_context is None:
+            return None
+
+        map_body = str(map_context.active_result.repo_map_text)
+        section_text = render_repo_map_navigation_text(map_context)
+        is_broad_fallback = (
+            map_context.stage == "fallback"
+            and map_context.selection_decision is not None
+            and map_context.selection_decision.fallback_mode == "broad_map"
+        )
+        return RepoMapSectionRender(
+            section_text=section_text,
+            section_rendered=True,
+            contract_rendered=True,
+            fallback_notice_rendered=is_broad_fallback,
+            map_body_raw_chars=len(map_body),
+            map_body_rendered_chars=len(map_body),
+            section_rendered_chars=len(section_text),
+            section_rendered_hash=hash_repo_map_section_text(section_text),
+            base_prompt_reduction_applied=False,
+            omission_reason=None,
+        )
+
+    def _assemble_prompt(self, rendered, section_order):
+        # 顺序是刻意设计的：稳定规则放前面，最新请求放最后。
+        return "\n\n".join(rendered[section].rendered for section in section_order).strip()
+
+    def _metadata(
+        self,
+        prompt,
+        rendered,
+        budgets,
+        reduction_log,
+        selected_notes,
+        user_message,
+        section_texts,
+        section_order,
+        repo_map_render,
+    ):
         model_request_budget = self.agent.model_request_budget
         active_repo_map_reservation_tokens = 0
         base_prompt_budget_tokens = max(
@@ -346,7 +447,9 @@ class ContextManager:
             - model_request_budget.prompt_safety_margin_tokens,
         )
         section_metadata = {}
-        for section in SECTION_ORDER[:-1]:
+        for section in section_order:
+            if section == CURRENT_REQUEST_SECTION:
+                continue
             section_metadata[section] = {
                 "raw_chars": rendered[section].raw_chars,
                 "budget_chars": int(budgets.get(section, 0)),
@@ -357,7 +460,7 @@ class ContextManager:
             "budget_chars": None,
             "rendered_chars": len(rendered[CURRENT_REQUEST_SECTION].rendered),
         }
-        return {
+        metadata = {
             "model_input_budget_tokens": model_request_budget.model_input_budget_tokens,
             "prompt_safety_margin_tokens": model_request_budget.prompt_safety_margin_tokens,
             "active_repo_map_reservation_tokens": active_repo_map_reservation_tokens,
@@ -368,10 +471,10 @@ class ContextManager:
             "prompt_chars": len(prompt),
             "prompt_budget_chars": self.total_budget,
             "prompt_over_budget": len(prompt) > self.total_budget,
-            "section_order": list(SECTION_ORDER),
+            "section_order": list(section_order),
             "section_budgets": {
                 section: (None if section == CURRENT_REQUEST_SECTION else int(budgets.get(section, 0)))
-                for section in SECTION_ORDER
+                for section in section_order
             },
             "sections": section_metadata,
             "budget_reductions": reduction_log,
@@ -408,6 +511,19 @@ class ContextManager:
             },
             "context_usage": ContextUsageAnalyzer(self.agent).analyze(rendered),
         }
+        if repo_map_render is not None:
+            metadata["map_context"] = {
+                "section_rendered": repo_map_render.section_rendered,
+                "contract_rendered": repo_map_render.contract_rendered,
+                "fallback_notice_rendered": repo_map_render.fallback_notice_rendered,
+                "map_body_raw_chars": repo_map_render.map_body_raw_chars,
+                "map_body_rendered_chars": repo_map_render.map_body_rendered_chars,
+                "section_rendered_chars": repo_map_render.section_rendered_chars,
+                "section_rendered_hash": repo_map_render.section_rendered_hash,
+                "base_prompt_reduction_applied": repo_map_render.base_prompt_reduction_applied,
+                "omission_reason": repo_map_render.omission_reason,
+            }
+        return metadata
 
     def _skills_metadata(self):
         skills = getattr(self.agent, "skills", {})
