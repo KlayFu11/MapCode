@@ -1,5 +1,6 @@
 from dataclasses import FrozenInstanceError
 from hashlib import sha256
+from types import SimpleNamespace
 from typing import get_args
 
 import pytest
@@ -12,6 +13,7 @@ from pico.core.map_context_prompt import (
     PromptPurpose,
     RepoMapSectionRender,
     hash_repo_map_section_text,
+    render_repo_map_navigation_text,
 )
 
 
@@ -153,3 +155,87 @@ def test_prompt_build_result_rejects_missing_budget_metadata():
             metadata=metadata,
             repo_map_render=None,
         )
+
+
+def _map_context(
+    *,
+    branch: str,
+    stage: str,
+    focus_fnames: tuple[str, ...],
+    repo_map_text: str,
+    fallback_mode: str | None = None,
+):
+    return SimpleNamespace(
+        branch=branch,
+        stage=stage,
+        active_result=SimpleNamespace(
+            focus_fnames=focus_fnames,
+            repo_map_text=repo_map_text,
+            focused_repo_map_string="must not be used",
+            focus_fnames_list=("must-not-be-used.py",),
+        ),
+        selection_decision=(
+            None
+            if fallback_mode is None
+            else SimpleNamespace(fallback_mode=fallback_mode)
+        ),
+    )
+
+
+def test_render_repo_map_navigation_text_uses_one_template_for_focused_contexts():
+    branch_a = _map_context(
+        branch="specific",
+        stage="execution",
+        focus_fnames=("pico/core/runtime.py", "pico/core/engine.py"),
+        repo_map_text="branch-a body",
+    )
+    branch_b = _map_context(
+        branch="fuzzy",
+        stage="execution",
+        focus_fnames=("pico/core/context_manager.py",),
+        repo_map_text="branch-b body",
+    )
+
+    for result, branch, focus, body in (
+        (branch_a, "specific", "pico/core/runtime.py, pico/core/engine.py", "branch-a body"),
+        (branch_b, "fuzzy", "pico/core/context_manager.py", "branch-b body"),
+    ):
+        text = render_repo_map_navigation_text(result)
+
+        assert text == (
+            "[Repo Map - Navigation Context Only]\n"
+            "The following repo map shows selected code-structure signatures only, not "
+            "complete or authoritative file contents.\n"
+            "Use it only to decide which files and symbols to inspect.\n"
+            "Do not treat repo map snippets as authoritative full file content.\n"
+            "Before relying on implementation details or editing any existing file, use "
+            "read_file to inspect the complete current source.\n"
+            "Repo map content does not satisfy Pico's prior-read or freshness requirement.\n"
+            f"\nBranch: {branch}\n"
+            "Mode: focused\n"
+            f"Focus files (read these first): {focus}\n"
+            f"\n{body}"
+        )
+        assert "must not be used" not in text
+        assert "must-not-be-used.py" not in text
+
+
+def test_render_repo_map_navigation_text_renders_exact_broad_fallback_notice():
+    result = _map_context(
+        branch="fuzzy",
+        stage="fallback",
+        focus_fnames=(),
+        repo_map_text="broad body",
+        fallback_mode="broad_map",
+    )
+
+    assert render_repo_map_navigation_text(result).endswith(
+        "Focus files (read these first): none\n"
+        "No specific focus files were confirmed. Broad repository context is provided "
+        "for navigation.\n\n"
+        "broad body"
+    )
+
+
+def test_render_repo_map_navigation_text_returns_empty_text_without_map_context():
+    assert render_repo_map_navigation_text(None) == ""

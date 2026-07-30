@@ -6,7 +6,55 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from pico.core.map_context import MapContextResult
+
+
+REPO_MAP_NAVIGATION_CONTRACT = """[Repo Map - Navigation Context Only]
+The following repo map shows selected code-structure signatures only, not complete or authoritative file contents.
+Use it only to decide which files and symbols to inspect.
+Do not treat repo map snippets as authoritative full file content.
+Before relying on implementation details or editing any existing file, use read_file to inspect the complete current source.
+Repo map content does not satisfy Pico's prior-read or freshness requirement."""
+
+BROADER_CONTEXT_FALLBACK_NOTICE = (
+    "No specific focus files were confirmed. Broad repository context is provided "
+    "for navigation."
+)
+
+
+def render_repo_map_navigation_text(result: MapContextResult | None) -> str:
+    """Render the complete navigation contract from structured map context."""
+    if result is None:
+        return ""
+
+    active_result = result.active_result
+    focus_files_display = ", ".join(active_result.focus_fnames) or "none"
+    is_broad_fallback = (
+        result.stage == "fallback"
+        and result.selection_decision is not None
+        and result.selection_decision.fallback_mode == "broad_map"
+    )
+    mode = "broad_fallback" if is_broad_fallback else "focused"
+    status_lines = [
+        f"Branch: {result.branch}",
+        f"Mode: {mode}",
+        f"Focus files (read these first): {focus_files_display}",
+    ]
+    if is_broad_fallback:
+        status_lines.append(BROADER_CONTEXT_FALLBACK_NOTICE)
+
+    return "\n".join(
+        (
+            REPO_MAP_NAVIGATION_CONTRACT,
+            "",
+            *status_lines,
+            "",
+            active_result.repo_map_text,
+        )
+    )
 
 
 def hash_repo_map_section_text(section_text: str) -> str:
