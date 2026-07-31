@@ -1,11 +1,15 @@
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import ANY
 
 import pytest
 
 from pico import Pico, SessionStore, WorkspaceContext
-from pico.core.map_context_prompt import REPO_MAP_NAVIGATION_CONTRACT
+from pico.core.map_context_prompt import (
+    REPO_MAP_NAVIGATION_CONTRACT,
+    RepoMapSectionRender,
+)
 from pico.features.map_engine.models import PromptAnalysis
 from pico.providers import ProviderError
 from pico.testing import ScriptedModelClient
@@ -285,6 +289,87 @@ def test_branch_a_artifact_failure_rebuilds_without_map_before_model_request(tmp
     failure = next(event for event in trace_events if event["event"] == "map_context_failed")
     assert failure["error_type"] == "OSError"
     assert failure["fallback"] == "without_repo_map"
+
+
+def test_branch_a_repo_map_omission_rebuilds_without_finalization_or_failure(tmp_path):
+    agent = _runtime(tmp_path, ["<final>Fallback response.</final>"])
+    analysis = _analysis(mentioned_files=("src/auth.py",))
+    coordinator = _BranchACoordinator(analysis)
+    agent.map_context_coordinator = coordinator
+    build_contexts = []
+    build_prompts = []
+    original_build = agent._build_prompt_and_metadata
+
+    def force_repo_map_omission(user_message, *, purpose):
+        result = original_build(user_message, purpose=purpose)
+        if purpose != "main_model":
+            return result
+
+        build_contexts.append(agent.current_map_context)
+        build_prompts.append(result.prompt)
+        if len(build_contexts) != 1:
+            return result
+
+        original_render = result.repo_map_render
+        assert original_render is not None
+        omitted_render = RepoMapSectionRender.omitted(
+            "base_prompt_cannot_fit_with_repo_map_reservation",
+            map_body_raw_chars=original_render.map_body_raw_chars,
+            base_prompt_reduction_applied=original_render.base_prompt_reduction_applied,
+        )
+        metadata = dict(result.metadata)
+        metadata["map_context"] = {
+            "section_rendered": omitted_render.section_rendered,
+            "contract_rendered": omitted_render.contract_rendered,
+            "fallback_notice_rendered": omitted_render.fallback_notice_rendered,
+            "map_body_raw_chars": omitted_render.map_body_raw_chars,
+            "map_body_rendered_chars": omitted_render.map_body_rendered_chars,
+            "section_rendered_chars": omitted_render.section_rendered_chars,
+            "section_rendered_hash": omitted_render.section_rendered_hash,
+            "base_prompt_reduction_applied": omitted_render.base_prompt_reduction_applied,
+            "omission_reason": omitted_render.omission_reason,
+        }
+        return replace(
+            result,
+            metadata=metadata,
+            repo_map_render=omitted_render,
+        )
+
+    agent._build_prompt_and_metadata = force_repo_map_omission
+
+    assert agent.engine.ask("Explain the target.") == "Fallback response."
+
+    assert coordinator.calls == [
+        ("analyze_turn", "Explain the target."),
+        ("prepare_specific", analysis),
+    ]
+    assert build_contexts == [coordinator.prepared_context, None]
+    assert REPO_MAP_NAVIGATION_CONTRACT in build_prompts[0]
+    assert REPO_MAP_NAVIGATION_CONTRACT not in build_prompts[1]
+    assert agent.model_client.prompts == [build_prompts[1]]
+    assert agent.current_map_context is None
+
+    trace_events = [
+        json.loads(line)
+        for line in (agent.current_run_dir / "trace.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert "map_context_failed" not in [event["event"] for event in trace_events]
+    assert "map_generated" not in [event["event"] for event in trace_events]
+    prompt_built = next(event for event in trace_events if event["event"] == "prompt_built")
+    assert prompt_built["prompt_metadata"]["map_context"] == {
+        "section_rendered": False,
+        "contract_rendered": False,
+        "fallback_notice_rendered": False,
+        "map_body_raw_chars": len("src/auth.py: AuthService"),
+        "map_body_rendered_chars": 0,
+        "section_rendered_chars": 0,
+        "section_rendered_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb924"
+        "27ae41e4649b934ca495991b7852b855",
+        "base_prompt_reduction_applied": False,
+        "omission_reason": "base_prompt_cannot_fit_with_repo_map_reservation",
+    }
 
 
 @pytest.mark.parametrize("feature_flags, coordinator", [({}, None), ({"map_engine": True}, None)])

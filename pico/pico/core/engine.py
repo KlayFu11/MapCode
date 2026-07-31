@@ -128,7 +128,32 @@ class Engine:
             prompt_build_result = agent._build_prompt_and_metadata(
                 user_message, purpose="main_model"
             )
+            omitted_map_metadata = None
+            omission_budget_metadata = {}
             if (
+                agent.current_map_context is not None
+                and prompt_build_result.repo_map_render is not None
+                and prompt_build_result.repo_map_render.omission_reason
+                == "base_prompt_cannot_fit_with_repo_map_reservation"
+            ):
+                # 这是预算降级而非增强层故障：不能发出失败事件或写 artifact，
+                # 但要把本次整段省略的事实保留到真正发送的无 map prompt trace。
+                omitted_map_metadata = dict(
+                    prompt_build_result.metadata.get("map_context", {})
+                )
+                omission_budget_metadata = {
+                    key: prompt_build_result.metadata[key]
+                    for key in (
+                        "auto_compacted",
+                        "base_prompt_over_budget_with_repo_map_reservation",
+                    )
+                    if key in prompt_build_result.metadata
+                }
+                agent.current_map_context = None
+                prompt_build_result = agent._build_prompt_and_metadata(
+                    user_message, purpose="main_model"
+                )
+            elif (
                 not map_context_finalized
                 and agent.current_map_context is not None
                 and prompt_build_result.repo_map_render is not None
@@ -149,6 +174,9 @@ class Engine:
                     )
             prompt = prompt_build_result.prompt
             prompt_metadata = dict(prompt_build_result.metadata)
+            if omitted_map_metadata:
+                prompt_metadata["map_context"] = omitted_map_metadata
+                prompt_metadata.update(omission_budget_metadata)
             agent.emit_trace(
                 task_state,
                 "prompt_built",
