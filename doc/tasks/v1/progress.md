@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F7-02 Engine 获取同 snapshot catalog 并执行 selector 请求预算门禁`
+- 下一可执行任务：`V1-F7-03 Engine 复用双角色 provider adapter 调用 selector`
 
 ## 阶段 0：固定施工地基
 
@@ -97,7 +97,7 @@
 ## 阶段 7：Branch B Selector 与确认流
 
 - [x] V1-F7-01 实现 selector request builder、parser 和 visible path 校验 (P0, 依赖 V1-F6-09)
-- [ ] V1-F7-02 Engine 获取同 snapshot catalog 并执行 selector 请求预算门禁 (P0, 依赖 V1-F7-01)
+- [x] V1-F7-02 Engine 获取同 snapshot catalog 并执行 selector 请求预算门禁 (P0, 依赖 V1-F7-01)
 - [ ] V1-F7-03 Engine 复用双角色 provider adapter 调用 selector (P0, 依赖 V1-F7-02)
 - [ ] V1-F7-04 实现整组二选一确认协议 (P0, 依赖 V1-F7-03)
 - [ ] V1-F7-05 实现 one-shot、超预算、取消和无效输出 fallback (P0, 依赖 V1-F7-04)

@@ -90,8 +90,12 @@ class MapContextCoordinator:
     def build_selector_catalog(
         self,
         task_state: "TaskState",
+        broad_result: MapResult,
     ) -> SelectorCandidateCatalog:
-        return self.map_engine.build_selector_catalog()
+        catalog = self.map_engine.build_selector_catalog()
+        if catalog.index_snapshot_id != broad_result.evidence.index_snapshot_id:
+            raise ValueError("selector catalog must share broad result snapshot")
+        return catalog
 
     def prepare_fuzzy(
         self,

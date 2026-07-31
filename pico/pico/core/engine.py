@@ -16,6 +16,8 @@ from .engine_helpers import (
     request_step_limit_summary,
     should_retry_model_error,
 )
+from .map_context_reporter import MapEngineConsoleReporter
+from .map_selector import SelectionDecision, build_selector_request
 from .task_state import TaskState
 from .workspace import clip, now
 
@@ -106,7 +108,7 @@ class Engine:
                 "user_request": clip(user_message, 300),
             },
         )
-        self._prepare_branch_a_context(task_state, user_message)
+        yield from self._prepare_branch_a_context(task_state, user_message)
 
         tool_steps = 0
         attempts = 0
@@ -546,8 +548,44 @@ class Engine:
                 agent.current_map_context = coordinator.prepare_specific(
                     task_state, analysis
                 )
+            elif analysis.branch == "fuzzy" and not has_branch_a_signal:
+                broad_result = coordinator.prepare_broad(task_state, analysis)
+                yield self._broad_ready_event(task_state, broad_result)
+                selector_catalog = coordinator.build_selector_catalog(
+                    task_state, broad_result
+                )
+                selector_request = build_selector_request(
+                    user_message,
+                    broad_result,
+                    selector_catalog,
+                )
+                selector_prompt = (
+                    selector_request.system_prompt + selector_request.user_prompt
+                )
+                if agent.model_request_budget.request_over_budget(selector_prompt):
+                    decision = SelectionDecision.broad_fallback(
+                        "selector_request_over_budget"
+                    )
+                    agent.current_map_context = coordinator.prepare_fuzzy(
+                        task_state,
+                        broad_result,
+                        decision,
+                    )
         except Exception as exc:
             self._discard_map_context(task_state, exc)
+
+    def _broad_ready_event(self, task_state, broad_result):
+        report = MapEngineConsoleReporter().render_map_result(
+            broad_result,
+            branch="fuzzy",
+            stage="execution",
+        )
+        return {
+            "type": "broad_ready",
+            "run_id": task_state.run_id,
+            "content": report.to_text(),
+            "payload": dict(report.payload),
+        }
 
     def _discard_map_context(self, task_state, exc):
         agent = self.runtime
