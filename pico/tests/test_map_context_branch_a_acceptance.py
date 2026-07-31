@@ -37,7 +37,8 @@ class _BranchACoordinator:
     def __init__(self, analysis):
         self.analysis = analysis
         self.calls = []
-        self.context = None
+        self.prepared_context = None
+        self.finalized_context = None
 
     def analyze_turn(self, task_state, user_message):
         self.calls.append(("analyze_turn", user_message))
@@ -45,7 +46,8 @@ class _BranchACoordinator:
 
     def prepare_specific(self, task_state, analysis):
         self.calls.append(("prepare_specific", analysis))
-        self.context = SimpleNamespace(
+        self.prepared_context = SimpleNamespace(
+            map_context_id="mapctx_stable",
             branch="specific",
             stage="execution",
             active_result=SimpleNamespace(
@@ -53,12 +55,26 @@ class _BranchACoordinator:
                 focus_fnames=analysis.mentioned_files,
             ),
             selection_decision=None,
+            prompt_injection=None,
+            repo_map_artifact_path=None,
+            evidence_artifact_path=None,
         )
-        return self.context
+        return self.prepared_context
 
     def finalize_prompt_context(self, task_state, result, repo_map_render):
         self.calls.append(("finalize_prompt_context", repo_map_render))
-        return result
+        assert result is self.prepared_context
+        self.finalized_context = SimpleNamespace(
+            map_context_id=result.map_context_id,
+            branch=result.branch,
+            stage=result.stage,
+            active_result=result.active_result,
+            selection_decision=result.selection_decision,
+            prompt_injection=SimpleNamespace(section_rendered=True),
+            repo_map_artifact_path="repo-map-001.txt",
+            evidence_artifact_path="map-evidence-001.json",
+        )
+        return self.finalized_context
 
 
 @pytest.mark.parametrize(
@@ -99,8 +115,14 @@ def test_branch_a_prepares_once_after_run_started_before_first_main_build(
         ("prepare_specific", analysis),
         ("finalize_prompt_context", ANY),
     ]
-    assert build_contexts == [coordinator.context, coordinator.context]
-    assert coordinator.context.active_result.focus_fnames == analysis.mentioned_files
+    assert build_contexts == [coordinator.prepared_context, coordinator.finalized_context]
+    assert coordinator.prepared_context is not coordinator.finalized_context
+    assert (
+        coordinator.prepared_context.map_context_id
+        == coordinator.finalized_context.map_context_id
+    )
+    assert coordinator.prepared_context.active_result.focus_fnames == analysis.mentioned_files
+    assert agent.current_map_context is coordinator.finalized_context
     trace_events = [
         json.loads(line)["event"]
         for line in (agent.current_run_dir / "trace.jsonl").read_text(

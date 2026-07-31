@@ -219,7 +219,20 @@ def test_finalized_map_context_requires_all_prompt_and_artifact_fields():
     active = _map_result()
     prompt_injection = object()
 
-    context = MapContextResult(
+    prepared = MapContextResult(
+        map_context_id="mapctx_final",
+        branch="specific",
+        stage="execution",
+        active_result=active,
+        broad_result=None,
+        selection_decision=None,
+        selector_model_calls=0,
+        prompt_injection=None,
+        repo_map_artifact_path=None,
+        evidence_artifact_path=None,
+    )
+
+    finalized = MapContextResult(
         map_context_id="mapctx_final",
         branch="specific",
         stage="execution",
@@ -232,9 +245,17 @@ def test_finalized_map_context_requires_all_prompt_and_artifact_fields():
         evidence_artifact_path="map-evidence-001.json",
     )
 
-    assert context.prompt_injection is prompt_injection
-    assert context.repo_map_artifact_path == "repo-map-001.txt"
-    assert context.evidence_artifact_path == "map-evidence-001.json"
+    assert prepared is not finalized
+    assert prepared.map_context_id == finalized.map_context_id
+    assert prepared.prompt_injection is None
+    assert prepared.repo_map_artifact_path is None
+    assert prepared.evidence_artifact_path is None
+    assert finalized.prompt_injection is prompt_injection
+    assert finalized.repo_map_artifact_path == "repo-map-001.txt"
+    assert finalized.evidence_artifact_path == "map-evidence-001.json"
+
+    with pytest.raises(FrozenInstanceError):
+        finalized.map_context_id = "mapctx_changed"
 
 
 def test_map_evidence_artifact_is_run_level_envelope_without_self_path():

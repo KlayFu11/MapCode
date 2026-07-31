@@ -133,10 +133,12 @@ class Engine:
                 and agent.current_map_context is not None
                 and prompt_build_result.repo_map_render is not None
             ):
-                agent.map_context_coordinator.finalize_prompt_context(
-                    task_state,
-                    agent.current_map_context,
-                    prompt_build_result.repo_map_render,
+                agent.current_map_context = (
+                    agent.map_context_coordinator.finalize_prompt_context(
+                        task_state,
+                        agent.current_map_context,
+                        prompt_build_result.repo_map_render,
+                    )
                 )
                 map_context_finalized = True
             prompt = prompt_build_result.prompt
