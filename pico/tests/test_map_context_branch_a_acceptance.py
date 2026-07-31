@@ -389,7 +389,7 @@ def test_branch_a_artifact_failure_rebuilds_without_map_before_model_request(tmp
     assert failure["fallback"] == "without_repo_map"
 
 
-def test_branch_a_repo_map_omission_rebuilds_without_finalization_or_failure(tmp_path):
+def test_branch_a_repo_map_omission_finalizes_before_rebuilding_without_failure(tmp_path):
     agent = _runtime(tmp_path, ["<final>Fallback response.</final>"])
     analysis = _analysis(mentioned_files=("src/auth.py",))
     coordinator = _BranchACoordinator(analysis)
@@ -440,7 +440,11 @@ def test_branch_a_repo_map_omission_rebuilds_without_finalization_or_failure(tmp
     assert coordinator.calls == [
         ("analyze_turn", "Explain the target."),
         ("prepare_specific", analysis),
+        ("finalize_prompt_context", ANY),
     ]
+    omitted_render = coordinator.calls[-1][1]
+    assert omitted_render.section_text == ""
+    assert omitted_render.omission_reason == "base_prompt_cannot_fit_with_repo_map_reservation"
     assert build_contexts == [coordinator.prepared_context, None]
     assert REPO_MAP_NAVIGATION_CONTRACT in build_prompts[0]
     assert REPO_MAP_NAVIGATION_CONTRACT not in build_prompts[1]

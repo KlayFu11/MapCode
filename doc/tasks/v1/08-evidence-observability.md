@@ -43,7 +43,7 @@
 - **依赖**：V1-F8-01
 - **输入**：当前最新 SPEC/PRD/FuncFlow、首次 main_model build-local render
 - **输出**：`repo-map-001.txt` 与一致性 tests
-- **允许修改路径**：`map_context.py`、RunStore 最小适配、evidence tests
+- **允许修改路径**：`map_context.py`、`engine.py`（首次 omitted render finalization）、RunStore 最小适配、evidence tests、Branch A acceptance tests
 - **禁止修改边界**：不得保存 MapEngine candidate body 代替实际注入 section
 - **步骤**：将首次主模型实际使用的完整 repo_map section 或空注入结果固定写入 `repo-map-001.txt`；不重复写后续 build。
 - **验证命令**：

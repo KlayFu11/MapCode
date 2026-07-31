@@ -162,7 +162,19 @@ class Engine:
                     )
                     if key in prompt_build_result.metadata
                 }
-                agent.current_map_context = None
+                try:
+                    agent.current_map_context = (
+                        agent.map_context_coordinator.finalize_prompt_context(
+                            task_state,
+                            agent.current_map_context,
+                            prompt_build_result.repo_map_render,
+                        )
+                    )
+                    map_context_finalized = True
+                except Exception as exc:
+                    self._discard_map_context(task_state, exc)
+                else:
+                    agent.current_map_context = None
                 prompt_build_result = agent._build_prompt_and_metadata(
                     user_message, purpose="main_model"
                 )
