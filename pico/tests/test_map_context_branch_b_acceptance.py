@@ -222,19 +222,26 @@ def test_fuzzy_selector_uses_separate_provider_roles_and_traces_before_main_mode
         [
             json.dumps(
                 {
-                    "suggested_files": ["pkg/service.py"],
-                    "reasoning": "Service code is relevant.",
+                    "suggested_files": ["pkg/service.py", "pkg/auth.py"],
+                    "reasoning": "Service and authentication code are relevant.",
                 }
             ),
             "<final>Selector call completed.</final>",
         ]
     )
+    confirmations = []
+
+    def ask_user(question, choices):
+        confirmations.append((question, choices))
+        return "接受全部建议"
+
     agent = Pico(
         model_client=model_client,
         workspace=WorkspaceContext.build(repo),
         session_store=SessionStore(repo / ".pico" / "sessions"),
         approval_policy="auto",
         feature_flags={"map_engine": True},
+        ask_user_callback=ask_user,
     )
     coordinator = _RecordingCoordinator(agent.map_context_coordinator, _analysis(branch="fuzzy"))
     agent.map_context_coordinator = coordinator
@@ -250,7 +257,26 @@ def test_fuzzy_selector_uses_separate_provider_roles_and_traces_before_main_mode
         "analyze_turn",
         "prepare_broad",
         "build_selector_catalog",
+        "prepare_fuzzy",
     ]
+    assert confirmations == [
+        (
+            "Selector 建议聚焦以下文件：\n"
+            "- pkg/service.py\n"
+            "- pkg/auth.py\n\n"
+            "请选择“接受全部建议”或“使用 broad map”。",
+            ["接受全部建议", "使用 broad map"],
+        )
+    ]
+    assert coordinator.decision.confirmed_files == (
+        "pkg/service.py",
+        "pkg/auth.py",
+    )
+    assert coordinator.prepared_context.stage == "execution"
+    assert coordinator.prepared_context.active_result.focus_fnames == (
+        "pkg/service.py",
+        "pkg/auth.py",
+    )
     assert len(model_client.calls) == 2
     selector_call, main_call = model_client.calls
     assert selector_call == (
@@ -283,6 +309,21 @@ def test_fuzzy_selector_uses_separate_provider_roles_and_traces_before_main_mode
         if row["event"] == "model_requested"
     )
     assert selector_trace_index < model_requested_index
+    confirmed_trace_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "map_focus_confirmed"
+    )
+    assert selector_trace_index < confirmed_trace_index < model_requested_index
+    confirmed_trace = trace_rows[confirmed_trace_index]
+    assert {
+        key: confirmed_trace[key]
+        for key in ("suggested", "invalid", "confirmed")
+    } == {
+        "suggested": ["pkg/service.py", "pkg/auth.py"],
+        "invalid": [],
+        "confirmed": ["pkg/service.py", "pkg/auth.py"],
+    }
     assert {
         key: trace_rows[selector_trace_index][key]
         for key in (

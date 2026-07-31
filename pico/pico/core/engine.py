@@ -21,6 +21,7 @@ from .map_selector import (
     SelectionDecision,
     build_selector_request,
     parse_selector_output,
+    render_selector_confirmation,
 )
 from .task_state import TaskState
 from .workspace import clip, now
@@ -595,10 +596,38 @@ class Engine:
                         agent.max_new_tokens,
                         system_prompt=selector_request.system_prompt,
                     )
-                    parse_selector_output(
+                    selector_result = parse_selector_output(
                         selector_response.text,
                         frozenset(selector_request.visible_paths),
                     )
+                    if selector_result.suggested_files:
+                        answer = agent.ask_user(
+                            question=render_selector_confirmation(
+                                selector_result.suggested_files
+                            ),
+                            choices=["接受全部建议", "使用 broad map"],
+                        )
+                        decision = SelectionDecision.from_single_choice(
+                            selector_result,
+                            answer,
+                        )
+                        if decision.confirmed_files:
+                            agent.emit_trace(
+                                task_state,
+                                "map_focus_confirmed",
+                                {
+                                    "suggested": list(
+                                        selector_result.suggested_files
+                                    ),
+                                    "invalid": list(selector_result.invalid_files),
+                                    "confirmed": list(decision.confirmed_files),
+                                },
+                            )
+                        agent.current_map_context = coordinator.prepare_fuzzy(
+                            task_state,
+                            broad_result,
+                            decision,
+                        )
         except Exception as exc:
             self._discard_map_context(task_state, exc)
 
