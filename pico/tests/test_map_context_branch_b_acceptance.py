@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.map_context_prompt import REPO_MAP_NAVIGATION_CONTRACT
 from pico.core.map_selector import build_selector_request
 from pico.core.model_request_budget import (
     MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
@@ -306,6 +307,30 @@ def test_branch_a_signal_does_not_prepare_broad_or_selector_catalog(tmp_path):
     assert agent.current_task_state.selector_model_calls == 0
 
 
+def test_path_ident_only_specific_analysis_stays_on_branch_a(tmp_path):
+    repo = _copy_offline_demo_repo(tmp_path)
+    agent = _agent(repo, ["<final>Focused map is ready.</final>"])
+    coordinator = _RecordingCoordinator(
+        agent.map_context_coordinator,
+        _analysis(branch="specific", path_ident_hits=("pkg",)),
+    )
+    agent.map_context_coordinator = coordinator
+
+    events = list(agent.engine.run_turn("Explain the package structure."))
+
+    assert coordinator.calls == ["analyze_turn", "prepare_specific"]
+    assert "broad_ready" not in [event["type"] for event in events]
+    assert agent.current_task_state.selector_model_calls == 0
+    assert agent.current_task_state.map_context_summary["selector_model_calls"] == 0
+    trace_events = [
+        json.loads(line)["event"]
+        for line in (agent.current_run_dir / "trace.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert "map_selector_requested" not in trace_events
+
+
 def test_fuzzy_selector_uses_separate_provider_roles_and_traces_before_main_model(
     tmp_path,
 ):
@@ -453,3 +478,133 @@ def test_fuzzy_selector_uses_separate_provider_roles_and_traces_before_main_mode
         ),
         "call_number": 1,
     }
+
+
+def test_fuzzy_selector_success_preserves_focused_prompt_evidence_and_trace_order(
+    tmp_path,
+):
+    repo = _copy_offline_demo_repo(tmp_path)
+    user_message = "Explain the repository architecture."
+    model_client = _RoleRecordingModelClient(
+        [
+            json.dumps(
+                {
+                    "suggested_files": ["pkg/service.py", "pkg/auth.py"],
+                    "reasoning": "Service and authentication code are relevant.",
+                }
+            ),
+            "<final>Focused selector flow complete.</final>",
+        ]
+    )
+    agent = Pico(
+        model_client=model_client,
+        workspace=WorkspaceContext.build(repo),
+        session_store=SessionStore(repo / ".pico" / "sessions"),
+        approval_policy="auto",
+        feature_flags={"map_engine": True},
+        ask_user_callback=lambda question, choices: "接受全部建议",
+    )
+    coordinator = _RecordingCoordinator(
+        agent.map_context_coordinator, _analysis(branch="fuzzy")
+    )
+    agent.map_context_coordinator = coordinator
+
+    events = list(agent.engine.run_turn(user_message))
+
+    assert events[-2]["content"] == "Focused selector flow complete."
+    assert coordinator.decision.confirmed_files == ("pkg/service.py", "pkg/auth.py")
+    assert coordinator.prepared_context.stage == "execution"
+    assert coordinator.prepared_context.active_result.focus_fnames == (
+        "pkg/service.py",
+        "pkg/auth.py",
+    )
+    assert coordinator.prepared_context.active_result is not coordinator.broad_result
+
+    expected_request = build_selector_request(
+        user_message,
+        coordinator.broad_result,
+        coordinator.selector_catalog,
+    )
+    selector_call, main_call = model_client.calls
+    assert selector_call == (
+        expected_request.user_prompt,
+        agent.max_new_tokens,
+        {"system_prompt": expected_request.system_prompt},
+    )
+    assert "system_prompt" not in main_call[2]
+    main_prompt = main_call[0]
+    assert REPO_MAP_NAVIGATION_CONTRACT in main_prompt
+    assert "Mode: focused" in main_prompt
+    assert "Mode: broad_fallback" not in main_prompt
+    assert "Focus files (read these first): pkg/service.py, pkg/auth.py" in main_prompt
+    assert coordinator.prepared_context.active_result.repo_map_text in main_prompt
+
+    assert agent.current_task_state.attempts == 1
+    assert agent.current_task_state.selector_model_calls == 1
+    assert agent.current_task_state.main_model_calls == 1
+    assert len(model_client.calls) == 2
+
+    trace_rows = [
+        json.loads(line)
+        for line in (agent.current_run_dir / "trace.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    broad_selected_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "map_context_selected" and row["stage"] == "broad"
+    )
+    selector_requested_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "map_selector_requested"
+    )
+    focus_confirmed_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "map_focus_confirmed"
+    )
+    focused_selected_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "map_context_selected" and row["stage"] == "focused"
+    )
+    map_generated_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "map_generated"
+    )
+    prompt_built_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "prompt_built"
+    )
+    model_requested_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "model_requested"
+    )
+    assert (
+        broad_selected_index
+        < selector_requested_index
+        < focus_confirmed_index
+        < focused_selected_index
+        < map_generated_index
+        < prompt_built_index
+        < model_requested_index
+    )
+
+    map_generated = trace_rows[map_generated_index]
+    evidence = json.loads(
+        (agent.current_run_dir / "artifacts" / "map-evidence-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    active_result = coordinator.prepared_context.active_result
+    assert map_generated["index_snapshot_id"] == active_result.evidence.index_snapshot_id
+    assert evidence["index_snapshot_id"] == active_result.evidence.index_snapshot_id
+    assert evidence["active_result"]["focus_fnames"] == list(active_result.focus_fnames)
+    assert evidence["active_result"]["rendered_files"] == list(
+        active_result.rendered_files
+    )

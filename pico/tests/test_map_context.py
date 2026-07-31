@@ -163,7 +163,7 @@ def test_coordinator_reuses_snapshot_for_broad_catalog_and_fuzzy_context(tmp_pat
     coordinator = MapContextCoordinator(agent, fake_engine, agent.run_store)
 
     broad = coordinator.prepare_broad(task_state, fake_engine.fuzzy_analysis)
-    catalog = coordinator.build_selector_catalog(task_state)
+    catalog = coordinator.build_selector_catalog(task_state, broad)
     task_state.record_selector_model_call()
     decision = SelectionDecision.from_single_choice(_selector_result(), "接受全部建议")
     context = coordinator.prepare_fuzzy(task_state, broad, decision)
