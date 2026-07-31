@@ -100,6 +100,7 @@ class Engine:
                 "user_request": clip(user_message, 300),
             },
         )
+        self._prepare_branch_a_context(task_state, user_message)
 
         tool_steps = 0
         attempts = 0
@@ -455,3 +456,34 @@ class Engine:
         yield from finish_limited_run(
             self, task_state, user_message, final, run_started_at
         )
+
+    def _prepare_branch_a_context(self, task_state, user_message):
+        agent = self.runtime
+        coordinator = agent.map_context_coordinator
+        if not agent.feature_enabled("map_engine") or coordinator is None:
+            return
+
+        try:
+            analysis = coordinator.analyze_turn(task_state, user_message)
+            has_branch_a_signal = any(
+                (
+                    analysis.mentioned_files,
+                    analysis.effective_symbol_hits,
+                    analysis.path_ident_hits,
+                )
+            )
+            if analysis.branch == "specific" and has_branch_a_signal:
+                agent.current_map_context = coordinator.prepare_specific(
+                    task_state, analysis
+                )
+        except Exception as exc:
+            agent.current_map_context = None
+            agent.emit_trace(
+                task_state,
+                "map_context_failed",
+                {
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                    "fallback": "without_repo_map",
+                },
+            )

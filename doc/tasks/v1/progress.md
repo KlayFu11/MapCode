@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F6-01 Engine 在首次主模型 build 前执行 Branch A preparation`
+- 下一可执行任务：`V1-F6-02 Engine 在 run 结束时 finalize MapContext`
 
 ## 阶段 0：固定施工地基
 
@@ -84,7 +84,7 @@
 
 ## 阶段 6：Branch A 与最终模型门禁
 
-- [ ] V1-F6-01 Engine 在首次主模型 build 前执行 Branch A preparation (P0, 依赖 V1-F5-09)
+- [x] V1-F6-01 Engine 在首次主模型 build 前执行 Branch A preparation (P0, 依赖 V1-F5-09)
 - [ ] V1-F6-02 首次 main model build 后持久化 artifacts (P0, 依赖 V1-F6-01)
 - [ ] V1-F6-03 prepared MapContext 替换为 finalized 对象 (P0, 依赖 V1-F6-02)
 - [ ] V1-F6-04 retry/tool loop 复用同一 MapContext (P0, 依赖 V1-F6-03)
