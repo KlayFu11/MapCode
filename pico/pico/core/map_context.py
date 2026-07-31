@@ -283,6 +283,18 @@ class MapContextResult:
             expected_calls = 1 if self.selection_decision.selector_result is not None else 0
             if self.selector_model_calls != expected_calls:
                 raise ValueError("selector_model_calls must match selection_decision")
+            if self.selection_decision.confirmed_files:
+                if self.stage != "execution":
+                    raise ValueError("confirmed selection must use execution stage")
+                if self.active_result.mode != "focused":
+                    raise ValueError("confirmed selection must use focused active_result")
+                if (
+                    self.active_result.focus_fnames
+                    != self.selection_decision.confirmed_files
+                ):
+                    raise ValueError(
+                        "focused active_result must match confirmed_files"
+                    )
         if self.stage == "fallback":
             if self.active_result != self.broad_result:
                 raise ValueError("fallback stage active_result must reuse broad_result")

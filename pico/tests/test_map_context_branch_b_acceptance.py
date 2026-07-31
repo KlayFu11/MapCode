@@ -369,6 +369,21 @@ def test_fuzzy_selector_uses_separate_provider_roles_and_traces_before_main_mode
         "pkg/service.py",
         "pkg/auth.py",
     )
+    assert coordinator.prepared_context.broad_result is coordinator.broad_result
+    assert coordinator.prepared_context.selection_decision is coordinator.decision
+    assert (
+        coordinator.prepared_context.active_result.evidence.index_snapshot_id
+        == coordinator.prepared_context.broad_result.evidence.index_snapshot_id
+        == coordinator.selector_catalog.index_snapshot_id
+    )
+    assert (
+        coordinator.prepared_context.active_result.evidence.rendering.target_tokens
+        == 4_096
+    )
+    assert (
+        coordinator.prepared_context.broad_result.evidence.rendering.target_tokens
+        == 8_192
+    )
     assert len(model_client.calls) == 2
     selector_call, main_call = model_client.calls
     assert selector_call == (
@@ -407,6 +422,10 @@ def test_fuzzy_selector_uses_separate_provider_roles_and_traces_before_main_mode
         if row["event"] == "map_focus_confirmed"
     )
     assert selector_trace_index < confirmed_trace_index < model_requested_index
+    assert (
+        sum(row["event"] == "map_index_status" for row in trace_rows)
+        == 1
+    )
     confirmed_trace = trace_rows[confirmed_trace_index]
     assert {
         key: confirmed_trace[key]

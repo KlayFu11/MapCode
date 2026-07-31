@@ -164,6 +164,56 @@ def test_branch_b_confirmed_context_keeps_broad_result_and_selector_snapshot():
     assert context.selector_model_calls == 1
 
 
+@pytest.mark.parametrize(
+    ("stage", "active", "match"),
+    (
+        (
+            "fallback",
+            _map_result(branch="fuzzy"),
+            "confirmed selection must use execution stage",
+        ),
+        (
+            "execution",
+            _map_result(mode="broad", branch="fuzzy", focus_fnames=()),
+            "confirmed selection must use focused active_result",
+        ),
+        (
+            "execution",
+            _map_result(
+                branch="fuzzy",
+                focus_fnames=("pico/core/task_state.py",),
+            ),
+            "focused active_result must match confirmed_files",
+        ),
+    ),
+)
+def test_branch_b_confirmed_context_requires_focused_execution_state(
+    stage, active, match
+):
+    broad = _map_result(
+        mode="broad",
+        branch="fuzzy",
+        focus_fnames=(),
+    )
+    decision = SelectionDecision.from_single_choice(
+        _selector_result(), "接受全部建议"
+    )
+
+    with pytest.raises(ValueError, match=match):
+        MapContextResult(
+            map_context_id="mapctx_confirmed",
+            branch="fuzzy",
+            stage=stage,
+            active_result=active,
+            broad_result=broad,
+            selection_decision=decision,
+            selector_model_calls=1,
+            prompt_injection=None,
+            repo_map_artifact_path=None,
+            evidence_artifact_path=None,
+        )
+
+
 def test_branch_b_broad_fallback_reuses_active_broad_result():
     broad = _map_result(
         mode="broad",
