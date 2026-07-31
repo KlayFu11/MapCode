@@ -58,6 +58,12 @@ class Engine:
             }
 
     def run_turn(self, user_message):
+        try:
+            yield from self._run_turn(user_message)
+        finally:
+            self.runtime.current_map_context = None
+
+    def _run_turn(self, user_message):
         agent = self.runtime
         run_started_at = time.monotonic()
         task_state = TaskState.create(

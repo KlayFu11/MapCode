@@ -128,7 +128,7 @@ def test_branch_a_prepares_once_after_run_started_before_first_main_build(
         == coordinator.finalized_context.map_context_id
     )
     assert coordinator.prepared_context.active_result.focus_fnames == analysis.mentioned_files
-    assert agent.current_map_context is coordinator.finalized_context
+    assert agent.current_map_context is None
     trace_events = [
         json.loads(line)["event"]
         for line in (agent.current_run_dir / "trace.jsonl").read_text(
@@ -212,6 +212,77 @@ def test_branch_a_tool_loop_and_provider_retry_reuse_finalized_map_context(tmp_p
     )
     assert retry_event["code"] == "empty_response"
     assert retry_event["retry_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "exit_path",
+    (
+        "completed",
+        "provider_failure",
+        "stopped",
+        "step_limit",
+        "retry_limit",
+        "over_budget",
+    ),
+)
+def test_branch_a_clears_current_map_context_after_every_run_exit(tmp_path, exit_path):
+    outputs = ["<final>Done.</final>"]
+    runtime_kwargs = {}
+    expected_status = "completed"
+    expected_stop_reason = "final_answer_returned"
+
+    if exit_path == "provider_failure":
+        outputs = [ProviderError("rate limited", code="rate_limited")]
+        expected_status = "failed"
+        expected_stop_reason = "model_error"
+    elif exit_path == "stopped":
+        expected_status = "stopped"
+        expected_stop_reason = "aborted"
+    elif exit_path == "step_limit":
+        outputs = [
+            '<tool name="list_files" path="."></tool>',
+            "I cannot summarize this run.",
+        ]
+        runtime_kwargs["max_steps"] = 1
+        expected_status = "stopped"
+        expected_stop_reason = "step_limit_reached"
+    elif exit_path == "retry_limit":
+        outputs = ["retry"] * 3
+        runtime_kwargs["max_steps"] = 1
+        expected_status = "stopped"
+        expected_stop_reason = "retry_limit_reached"
+    elif exit_path == "over_budget":
+        expected_status = "stopped"
+        expected_stop_reason = "request_over_budget"
+
+    agent = _runtime(tmp_path, outputs, **runtime_kwargs)
+    analysis = _analysis(mentioned_files=("src/auth.py",))
+    coordinator = _BranchACoordinator(analysis)
+    agent.map_context_coordinator = coordinator
+
+    if exit_path == "stopped":
+        agent.abort_requested = True
+    elif exit_path == "over_budget":
+        original_build = agent._build_prompt_and_metadata
+
+        def build_over_budget(user_message, *, purpose):
+            result = original_build(user_message, purpose=purpose)
+            if purpose != "main_model":
+                return result
+            metadata = dict(result.metadata)
+            metadata["request_over_budget"] = True
+            return replace(result, metadata=metadata)
+
+        agent._build_prompt_and_metadata = build_over_budget
+
+    list(agent.engine.run_turn("Explain the target."))
+
+    assert coordinator.prepared_context is not None
+    if exit_path != "stopped":
+        assert coordinator.finalized_context is not None
+    assert agent.current_task_state.status == expected_status
+    assert agent.current_task_state.stop_reason == expected_stop_reason
+    assert agent.current_map_context is None
 
 
 def test_branch_a_preparation_failure_emits_trace_and_continues_without_map(tmp_path):
