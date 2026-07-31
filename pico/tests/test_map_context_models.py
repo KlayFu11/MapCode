@@ -313,7 +313,7 @@ def test_map_evidence_artifact_is_run_level_envelope_without_self_path():
     result_evidence = MapResultEvidence.from_map_result(active)
     prompt_injection = object()
     artifact = MapEvidenceArtifact(
-        schema_version="mapcode.map-engine.v1",
+        schema_version="mapcode.map-evidence.v1",
         map_context_id="mapctx_final",
         run_id="run_123",
         branch="specific",
@@ -332,3 +332,60 @@ def test_map_evidence_artifact_is_run_level_envelope_without_self_path():
     assert artifact.prompt_injection is prompt_injection
     assert not hasattr(artifact, "evidence_artifact_path")
     assert not hasattr(artifact.active_result, "repo_map_text")
+
+
+@pytest.mark.parametrize(
+    ("changes", "match"),
+    (
+        (
+            {"schema_version": "mapcode.map-engine.v1"},
+            "schema_version",
+        ),
+        ({"map_context_id": "invalid"}, "map_context_id"),
+        ({"run_id": ""}, "run_id"),
+        ({"repo_map_artifact_path": ""}, "repo_map_artifact_path"),
+    ),
+)
+def test_map_evidence_artifact_validates_run_envelope_identity(changes, match):
+    active = _map_result()
+    values = {
+        "schema_version": "mapcode.map-evidence.v1",
+        "map_context_id": "mapctx_final",
+        "run_id": "run_123",
+        "branch": "specific",
+        "stage": "execution",
+        "index_snapshot_id": "sha256:abc123",
+        "analysis": active.evidence.analysis,
+        "broad_result": None,
+        "active_result": MapResultEvidence.from_map_result(active),
+        "selection_decision": None,
+        "prompt_injection": object(),
+        "repo_map_artifact_path": "repo-map-001.txt",
+    }
+    values.update(changes)
+
+    with pytest.raises(ValueError, match=match):
+        MapEvidenceArtifact(**values)
+
+
+def test_map_evidence_artifact_validates_branch_b_fallback_identity():
+    broad = _map_result(mode="broad", branch="fuzzy", focus_fnames=())
+    active = _map_result(branch="fuzzy")
+    decision = SelectionDecision.broad_fallback("selector_request_over_budget")
+    values = {
+        "schema_version": "mapcode.map-evidence.v1",
+        "map_context_id": "mapctx_fallback",
+        "run_id": "run_123",
+        "branch": "fuzzy",
+        "stage": "fallback",
+        "index_snapshot_id": broad.evidence.index_snapshot_id,
+        "analysis": broad.evidence.analysis,
+        "broad_result": MapResultEvidence.from_map_result(broad),
+        "active_result": MapResultEvidence.from_map_result(active),
+        "selection_decision": decision,
+        "prompt_injection": object(),
+        "repo_map_artifact_path": "repo-map-001.txt",
+    }
+
+    with pytest.raises(ValueError, match="active_result must reuse broad_result"):
+        MapEvidenceArtifact(**values)

@@ -97,10 +97,135 @@ def test_first_main_build_persists_complete_repo_map_evidence_before_prompt_even
         "repo-map-001.txt"
     ]
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert set(evidence) == {
+        "schema_version",
+        "map_context_id",
+        "run_id",
+        "branch",
+        "stage",
+        "index_snapshot_id",
+        "analysis",
+        "broad_result",
+        "active_result",
+        "selection_decision",
+        "prompt_injection",
+        "repo_map_artifact_path",
+    }
+    assert evidence["schema_version"] == "mapcode.map-evidence.v1"
     assert evidence["map_context_id"] == prepared.map_context_id
+    assert evidence["run_id"] == agent.current_task_state.run_id
+    assert evidence["branch"] == prepared.branch
+    assert evidence["stage"] == prepared.stage
+    assert evidence["index_snapshot_id"] == (
+        prepared.active_result.evidence.index_snapshot_id
+    )
+    assert evidence["analysis"] == {
+        "branch": prepared.active_result.evidence.analysis.branch,
+        "mentioned_files": list(
+            prepared.active_result.evidence.analysis.mentioned_files
+        ),
+        "mentioned_idents": list(
+            prepared.active_result.evidence.analysis.mentioned_idents
+        ),
+        "effective_symbol_hits": list(
+            prepared.active_result.evidence.analysis.effective_symbol_hits
+        ),
+        "path_ident_hits": list(
+            prepared.active_result.evidence.analysis.path_ident_hits
+        ),
+        "path_ident_hit_files": {
+            ident: list(paths)
+            for ident, paths in prepared.active_result.evidence.analysis.path_ident_hit_files.items()
+        },
+    }
+    active_evidence = evidence["active_result"]["evidence"]
+    assert active_evidence["schema_version"] == "mapcode.map-engine.v1"
+    assert active_evidence["index_snapshot_id"] == evidence["index_snapshot_id"]
+    assert active_evidence["analysis"] == evidence["analysis"]
+    ranking = prepared.active_result.evidence.ranking
+    assert active_evidence["ranking"] == {
+        "policy_version": ranking.policy_version,
+        "algorithm": ranking.algorithm,
+        "focus_fnames": list(ranking.focus_fnames),
+        "ident_boost_inputs": list(ranking.ident_boost_inputs),
+        "focus_personalization_files": list(ranking.focus_personalization_files),
+        "path_personalization_files": list(ranking.path_personalization_files),
+        "personalization_files": list(ranking.personalization_files),
+        "top_ranked_files": list(ranking.top_ranked_files),
+    }
+    assert active_evidence["rendering"] == {
+        "target_tokens": prepared.active_result.evidence.rendering.target_tokens,
+        "target_chars": prepared.active_result.evidence.rendering.target_chars,
+        "used_chars": prepared.active_result.evidence.rendering.used_chars,
+        "estimated_tokens": prepared.active_result.evidence.rendering.estimated_tokens,
+        "budget_reduction_applied": prepared.active_result.evidence.rendering.budget_reduction_applied,
+        "focus_truncated": prepared.active_result.evidence.rendering.focus_truncated,
+    }
+    assert evidence["active_result"]["rendered_files"] == list(
+        prepared.active_result.rendered_files
+    )
+    assert evidence["active_result"]["rendered_symbols"] == list(
+        prepared.active_result.rendered_symbols
+    )
+    assert [
+        {
+            "path": item["path"],
+            "prompt_path_ident_hits": item["prompt_path_ident_hits"],
+            "top_rank_contributors": item["top_rank_contributors"],
+        }
+        for item in active_evidence["rendered_files"]
+    ] == [
+        {
+            "path": item.path,
+            "prompt_path_ident_hits": list(item.prompt_path_ident_hits),
+            "top_rank_contributors": [
+                {
+                    "source_path": contributor.source_path,
+                    "identifier": contributor.identifier,
+                    "weighted_edge": contributor.weighted_edge,
+                    "weight_multiplier": contributor.weight_multiplier,
+                    "weight_reason_codes": list(contributor.weight_reason_codes),
+                }
+                for contributor in item.top_rank_contributors
+            ],
+        }
+        for item in prepared.active_result.evidence.rendered_files
+    ]
+    assert [
+        {
+            "path": item["path"],
+            "prompt_path_ident_hits": item["prompt_path_ident_hits"],
+            "omission_reason": item["omission_reason"],
+        }
+        for item in active_evidence["omitted_files"]
+    ] == [
+        {
+            "path": item.path,
+            "prompt_path_ident_hits": list(item.prompt_path_ident_hits),
+            "omission_reason": item.omission_reason,
+        }
+        for item in prepared.active_result.evidence.omitted_files
+    ]
+    assert evidence["broad_result"] is None
+    assert evidence["selection_decision"] is None
+    assert evidence["prompt_injection"] == {
+        "section_rendered": rendered.section_rendered,
+        "contract_rendered": rendered.contract_rendered,
+        "fallback_notice_rendered": rendered.fallback_notice_rendered,
+        "map_body_raw_chars": rendered.map_body_raw_chars,
+        "map_body_rendered_chars": rendered.map_body_rendered_chars,
+        "section_rendered_chars": rendered.section_rendered_chars,
+        "section_rendered_hash": rendered.section_rendered_hash,
+        "base_prompt_reduction_applied": rendered.base_prompt_reduction_applied,
+        "omission_reason": rendered.omission_reason,
+    }
     assert evidence["repo_map_artifact_path"].endswith("repo-map-001.txt")
     assert "evidence_artifact_path" not in evidence
     assert "repo_map_text" not in evidence["active_result"]
+    serialized_evidence = json.dumps(evidence, sort_keys=True)
+    assert REPO_MAP_NAVIGATION_CONTRACT not in serialized_evidence
+    assert "[Selector Candidate Catalog]" not in serialized_evidence
+    assert "candidate_paths" not in serialized_evidence
 
     trace_rows = [
         json.loads(line)
@@ -218,3 +343,86 @@ def test_omitted_first_main_build_persists_empty_repo_map_evidence_before_fallba
     ]
     assert trace_events.count("map_generated") == 1
     assert "map_context_failed" not in trace_events
+
+
+def test_fuzzy_selection_evidence_keeps_broad_and_focused_facts_without_catalog_text(
+    tmp_path,
+):
+    agent = _runtime(tmp_path)
+    agent.model_client = ScriptedModelClient(
+        [
+            json.dumps(
+                {
+                    "suggested_files": ["src/auth.py"],
+                    "reasoning": "Authentication is the relevant source module.",
+                }
+            ),
+            "<final>Done.</final>",
+        ]
+    )
+    agent.ask_user_callback = lambda _question, _choices: "接受全部建议"
+
+    assert agent.engine.ask("Explain the repository architecture.") == "Done."
+
+    evidence = json.loads(
+        (agent.current_run_dir / "artifacts" / "map-evidence-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert evidence["branch"] == "fuzzy"
+    assert evidence["stage"] == "execution"
+    assert evidence["broad_result"] is not None
+    assert evidence["broad_result"]["mode"] == "broad"
+    assert evidence["active_result"]["mode"] == "focused"
+    assert evidence["broad_result"]["evidence"]["index_snapshot_id"] == evidence[
+        "index_snapshot_id"
+    ]
+    assert evidence["active_result"]["evidence"]["index_snapshot_id"] == evidence[
+        "index_snapshot_id"
+    ]
+    assert evidence["broad_result"]["evidence"]["analysis"] == evidence["analysis"]
+    assert evidence["active_result"]["evidence"]["analysis"] == evidence["analysis"]
+    assert evidence["selection_decision"] == {
+        "selector_result": {
+            "suggested_files": ["src/auth.py"],
+            "invalid_files": [],
+            "excess_files": [],
+            "reasoning": "Authentication is the relevant source module.",
+            "parse_error": None,
+        },
+        "confirmed_files": ["src/auth.py"],
+        "fallback_mode": "none",
+        "fallback_reason": None,
+    }
+    assert evidence["active_result"]["focus_fnames"] == evidence[
+        "selection_decision"
+    ]["confirmed_files"]
+    serialized_evidence = json.dumps(evidence, sort_keys=True)
+    assert "[Broad Repo Map]" not in serialized_evidence
+    assert "[Selector Candidate Catalog]" not in serialized_evidence
+    assert "candidate_paths" not in serialized_evidence
+    assert "evidence_artifact_path" not in evidence
+
+
+def test_fuzzy_one_shot_fallback_evidence_reuses_the_broad_result(tmp_path):
+    agent = _runtime(tmp_path)
+    agent.model_client = ScriptedModelClient(["<final>Done.</final>"])
+
+    assert agent.engine.ask("Explain the repository architecture.") == "Done."
+
+    evidence = json.loads(
+        (agent.current_run_dir / "artifacts" / "map-evidence-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert evidence["branch"] == "fuzzy"
+    assert evidence["stage"] == "fallback"
+    assert evidence["active_result"] == evidence["broad_result"]
+    assert evidence["selection_decision"] == {
+        "selector_result": None,
+        "confirmed_files": [],
+        "fallback_mode": "broad_map",
+        "fallback_reason": "one_shot_no_confirm",
+    }
+    assert "repo_map_text" not in json.dumps(evidence, sort_keys=True)
+    assert "evidence_artifact_path" not in evidence

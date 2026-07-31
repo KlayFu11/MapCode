@@ -329,15 +329,44 @@ class MapEvidenceArtifact:
     repo_map_artifact_path: str
 
     def __post_init__(self) -> None:
+        if self.schema_version != MAP_EVIDENCE_SCHEMA_VERSION:
+            raise ValueError("schema_version must match map evidence schema")
+        if not self.map_context_id.startswith("mapctx_"):
+            raise ValueError("map_context_id must start with mapctx_")
+        if not self.run_id:
+            raise ValueError("run_id must be non-empty")
+        if not self.repo_map_artifact_path:
+            raise ValueError("repo_map_artifact_path must be non-empty")
         if self.index_snapshot_id != self.active_result.evidence.index_snapshot_id:
             raise ValueError("index_snapshot_id must match active_result evidence")
         if self.analysis != self.active_result.evidence.analysis:
             raise ValueError("analysis must match active_result evidence")
-        if (
-            self.broad_result is not None
-            and self.broad_result.evidence.index_snapshot_id != self.index_snapshot_id
-        ):
+        if self.branch == "specific":
+            if self.broad_result is not None or self.selection_decision is not None:
+                raise ValueError("specific branch must not include selector state")
+            return
+
+        if self.broad_result is None or self.selection_decision is None:
+            raise ValueError("fuzzy branch requires broad_result and selection_decision")
+        if self.broad_result.evidence.index_snapshot_id != self.index_snapshot_id:
             raise ValueError("broad_result must share index_snapshot_id")
+        if self.broad_result.evidence.analysis != self.analysis:
+            raise ValueError("broad_result analysis must match artifact analysis")
+        if self.selection_decision.confirmed_files:
+            if self.stage != "execution":
+                raise ValueError("confirmed selection must use execution stage")
+            if self.active_result.mode != "focused":
+                raise ValueError("confirmed selection must use focused active_result")
+            if self.active_result.focus_fnames != self.selection_decision.confirmed_files:
+                raise ValueError("focused active_result must match confirmed_files")
+            return
+
+        if self.stage != "fallback":
+            raise ValueError("broad fallback selection must use fallback stage")
+        if self.active_result != self.broad_result:
+            raise ValueError("fallback stage active_result must reuse broad_result")
+        if self.selection_decision.fallback_mode != "broad_map":
+            raise ValueError("fallback stage requires broad_map selection_decision")
 
 
 def _new_map_context_id() -> str:
