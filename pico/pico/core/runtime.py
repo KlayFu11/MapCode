@@ -38,6 +38,7 @@ from .runtime_secrets import REDACTED_VALUE, RuntimeSecretsMixin
 from .session_events import SessionEventBus
 from .session_lifecycle import clear_runtime_session, resume_runtime_session
 from .session_store import SessionStore as SessionStore  # noqa: F401
+from .task_state import STOP_REASON_REQUEST_OVER_BUDGET
 from .tool_repetition import is_repeated_tool_call
 from .tool_profiles import build_tool_profiles
 from .todo_ledger import TodoLedger
@@ -917,6 +918,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
 
     def build_report(self, task_state):
         # report 是一次运行的最终摘要；
+        map_context = _report_map_context(task_state)
         return {
             "run_id": task_state.run_id,
             "task_id": task_state.task_id,
@@ -928,6 +930,33 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
             "checkpoint_id": task_state.checkpoint_id,
             "resume_status": task_state.resume_status,
             "task_state": task_state.to_dict(),
+            "map_context": map_context,
+            "model_calls": {
+                "main_model_calls": task_state.main_model_calls,
+                "selector_model_calls": task_state.selector_model_calls,
+                "total_model_calls": (
+                    task_state.main_model_calls + task_state.selector_model_calls
+                ),
+            },
+            "request_budget": {
+                "model_input_budget_tokens": (
+                    self.model_request_budget.model_input_budget_tokens
+                ),
+                "prompt_safety_margin_tokens": (
+                    self.model_request_budget.prompt_safety_margin_tokens
+                ),
+                "model_request_budget_source": self.model_request_budget.source,
+                "budget_reduction_applied": bool(
+                    map_context.get("budget_reduction_applied", False)
+                ),
+                "base_prompt_reduction_applied": bool(
+                    map_context.get("base_prompt_reduction_applied", False)
+                ),
+                "omission_reason": map_context.get("omission_reason"),
+                "request_over_budget": (
+                    task_state.stop_reason == STOP_REASON_REQUEST_OVER_BUDGET
+                ),
+            },
             "prompt_metadata": self.last_prompt_metadata,
             "durable_promotions": list(self.last_durable_promotions),
             "durable_rejections": list(self.last_durable_rejections),
@@ -994,3 +1023,10 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         if os.path.commonpath([str(self.root), str(resolved)]) != str(self.root):
             raise ValueError(f"path escapes workspace: {raw_path}")
         return resolved
+
+
+def _report_map_context(task_state):
+    summary = dict(task_state.map_context_summary)
+    if not summary.get("evidence_artifact_path"):
+        return {"enabled": False}
+    return summary

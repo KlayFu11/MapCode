@@ -262,6 +262,31 @@ def test_first_main_build_persists_complete_repo_map_evidence_before_prompt_even
     assert "repo_map_text" not in prompt_built["repo_map_render"]
     assert "sections" not in prompt_built["request_budget"]
 
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    assert report["map_context"] == agent.current_task_state.map_context_summary
+    assert report["map_context"]["budget_reduction_applied"] is False
+    assert report["map_context"]["base_prompt_reduction_applied"] is False
+    assert report["map_context"]["omission_reason"] is None
+    assert report["model_calls"] == {
+        "main_model_calls": agent.current_task_state.main_model_calls,
+        "selector_model_calls": 0,
+        "total_model_calls": agent.current_task_state.main_model_calls,
+    }
+    assert report["request_budget"] == {
+        "model_input_budget_tokens": agent.model_request_budget.model_input_budget_tokens,
+        "prompt_safety_margin_tokens": agent.model_request_budget.prompt_safety_margin_tokens,
+        "model_request_budget_source": agent.model_request_budget.source,
+        "budget_reduction_applied": False,
+        "base_prompt_reduction_applied": False,
+        "omission_reason": None,
+        "request_over_budget": False,
+    }
+    serialized_report = json.dumps(report, sort_keys=True)
+    assert REPO_MAP_NAVIGATION_CONTRACT not in serialized_report
+    assert "candidate_paths" not in serialized_report
+
 
 def test_omitted_first_main_build_persists_empty_repo_map_evidence_before_fallback(
     tmp_path,
@@ -343,6 +368,15 @@ def test_omitted_first_main_build_persists_empty_repo_map_evidence_before_fallba
     ]
     assert trace_events.count("map_generated") == 1
     assert "map_context_failed" not in trace_events
+
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    assert report["map_context"]["enabled"] is True
+    assert report["request_budget"]["omission_reason"] == (
+        "base_prompt_cannot_fit_with_repo_map_reservation"
+    )
+    assert report["request_budget"]["base_prompt_reduction_applied"] is False
 
 
 def test_fuzzy_selection_evidence_keeps_broad_and_focused_facts_without_catalog_text(

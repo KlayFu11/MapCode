@@ -456,7 +456,7 @@ def _first_omission_reason(result: MapResult) -> str | None:
 
 
 def _map_context_summary(result: MapContextResult) -> dict[str, object]:
-    return {
+    summary = {
         "enabled": True,
         "map_context_id": result.map_context_id,
         "branch": result.branch,
@@ -468,6 +468,19 @@ def _map_context_summary(result: MapContextResult) -> dict[str, object]:
         "repo_map_artifact_path": result.repo_map_artifact_path or "",
         "evidence_artifact_path": result.evidence_artifact_path or "",
     }
+    if result.prompt_injection is not None:
+        summary.update(
+            {
+                "budget_reduction_applied": (
+                    result.active_result.evidence.rendering.budget_reduction_applied
+                ),
+                "base_prompt_reduction_applied": (
+                    result.prompt_injection.base_prompt_reduction_applied
+                ),
+                "omission_reason": result.prompt_injection.omission_reason,
+            }
+        )
+    return summary
 
 
 def _json_safe(value: object) -> object:

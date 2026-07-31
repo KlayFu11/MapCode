@@ -2,6 +2,10 @@ import json
 
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.model_request_budget import (
+    MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+    ModelRequestBudget,
+)
 from pico.core.task_state import TaskState
 
 
@@ -97,6 +101,61 @@ def test_runtime_reminder_records_failed_tool_without_breaking_the_turn(tmp_path
     assert reminders[-1]["status"] == "rejected"
     assert reminders[-1]["message"]
     assert json.loads((agent.current_run_dir / "task_state.json").read_text(encoding="utf-8"))["runtime_reminders"] == reminders
+
+
+def test_report_uses_task_state_and_runtime_budget_without_map_context(tmp_path):
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+
+    assert agent.ask("summarize the workspace") == "Done."
+
+    report = json.loads((agent.current_run_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["map_context"] == {"enabled": False}
+    assert report["model_calls"] == {
+        "main_model_calls": 1,
+        "selector_model_calls": 0,
+        "total_model_calls": 1,
+    }
+    assert report["request_budget"] == {
+        "model_input_budget_tokens": agent.model_request_budget.model_input_budget_tokens,
+        "prompt_safety_margin_tokens": agent.model_request_budget.prompt_safety_margin_tokens,
+        "model_request_budget_source": agent.model_request_budget.source,
+        "budget_reduction_applied": False,
+        "base_prompt_reduction_applied": False,
+        "omission_reason": None,
+        "request_over_budget": False,
+    }
+
+
+def test_report_uses_stop_reason_and_immutable_runtime_budget_for_over_budget(tmp_path):
+    budget = ModelRequestBudget(
+        provider="test",
+        model="test-model",
+        model_input_budget_tokens=2,
+        prompt_safety_margin_tokens=1,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="explicit",
+    )
+    agent = build_agent(tmp_path, [], model_request_budget=budget)
+
+    result = agent.ask("summarize the workspace")
+
+    assert "Stopped locally" in result
+    report = json.loads((agent.current_run_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["request_budget"]["request_over_budget"] is True
+    assert report["request_budget"]["model_request_budget_source"] == "explicit"
+    assert report["model_calls"] == {
+        "main_model_calls": 0,
+        "selector_model_calls": 0,
+        "total_model_calls": 0,
+    }
+
+    agent.last_prompt_metadata = {
+        "request_over_budget": False,
+        "model_request_budget_source": "tampered",
+    }
+    rebuilt_report = agent.build_report(agent.current_task_state)
+    assert rebuilt_report["request_budget"]["request_over_budget"] is True
+    assert rebuilt_report["request_budget"]["model_request_budget_source"] == "explicit"
 
 
 def test_map_retrieval_trace_events_keep_explainable_payloads(tmp_path):
