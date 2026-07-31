@@ -138,6 +138,7 @@ def test_map_retrieval_trace_events_keep_explainable_payloads(tmp_path):
         "index_snapshot_id": "snapshot-1",
         "candidate_path_count": 4,
         "rendered_path_count": 2,
+        "visible_path_count": 3,
         "input_chars": 2048,
         "call_number": 1,
         "budget": {
@@ -191,6 +192,7 @@ def test_map_retrieval_trace_events_keep_explainable_payloads(tmp_path):
     ]
     assert selector_event["candidate_path_count"] == 4
     assert selector_event["rendered_path_count"] == 2
+    assert selector_event["visible_path_count"] == 3
     assert selector_event["input_chars"] == 2048
     assert selector_event["budget"]["request_over_budget"] is False
     assert selected_event["map_budget_tokens"] == 4096

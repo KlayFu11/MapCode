@@ -96,11 +96,37 @@ def test_first_main_build_persists_complete_repo_map_evidence_before_prompt_even
     assert "evidence_artifact_path" not in evidence
     assert "repo_map_text" not in evidence["active_result"]
 
-    trace_events = [
-        json.loads(line)["event"]
+    trace_rows = [
+        json.loads(line)
         for line in (agent.current_run_dir / "trace.jsonl").read_text(
             encoding="utf-8"
         ).splitlines()
     ]
+    trace_events = [row["event"] for row in trace_rows]
     assert trace_events.index("map_generated") < trace_events.index("prompt_built")
     assert trace_events.index("prompt_built") < trace_events.index("model_requested")
+
+    ranked = next(row for row in trace_rows if row["event"] == "map_context_ranked")
+    selected = next(
+        row for row in trace_rows if row["event"] == "map_context_selected"
+    )
+    prompt_built = next(row for row in trace_rows if row["event"] == "prompt_built")
+    metadata = build_results[0].metadata
+    assert ranked["index_snapshot_id"] == evidence["index_snapshot_id"]
+    assert selected["rendered_files"] == evidence["active_result"]["rendered_files"]
+    assert prompt_built["repo_map_render"] == metadata["map_context"]
+    assert prompt_built["request_budget"] == {
+        key: metadata[key]
+        for key in (
+            "model_input_budget_tokens",
+            "prompt_safety_margin_tokens",
+            "active_repo_map_reservation_tokens",
+            "base_prompt_budget_tokens",
+            "estimated_request_tokens",
+            "request_over_budget",
+            "model_request_budget_source",
+            "base_prompt_over_budget_with_repo_map_reservation",
+        )
+    }
+    assert "repo_map_text" not in prompt_built["repo_map_render"]
+    assert "sections" not in prompt_built["request_budget"]

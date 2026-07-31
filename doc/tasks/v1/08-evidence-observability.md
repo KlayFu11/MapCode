@@ -27,7 +27,7 @@
 - **依赖**：V1-F7-07
 - **输入**：当前最新 SPEC/PRD/FuncFlow、阶段 7 事件与预算事实
 - **输出**：index/analyzed/ranked/selected/selector/confirmed/generated/failed 与预算摘要事件 tests
-- **允许修改路径**：`map_context.py`、`runtime_events.py`、runtime evidence tests
+- **允许修改路径**：`map_context.py`、`runtime_events.py`、`engine.py`（仅 selector visible summary）、runtime evidence tests
 - **禁止修改边界**：不得新增旁路 writer、复制完整 map/catalog 或把正常 fallback 记为 failed
 - **步骤**：经 `runtime.emit_trace()` 写 run-level 摘要；`map_prompt_analyzed` 记录文件/idents/symbol hits/path-ident hits 与全量 hit-files；`map_context_ranked` 记录 focus/path/final personalization 和 contributor multiplier/reason codes；selector requested 记录 snapshot/candidate/rendered/visible/input chars/call，其中 selector input chars 表示完整 `system_prompt + user_prompt` 双角色请求；prompt_built 明确记录 render、reservation、`base_prompt_reduction_applied`、omission、request_over_budget。
 - **验证命令**：

@@ -582,6 +582,7 @@ class Engine:
                                 "index_snapshot_id": broad_result.evidence.index_snapshot_id,
                                 "candidate_path_count": len(selector_catalog.candidate_paths),
                                 "rendered_path_count": len(selector_catalog.rendered_paths),
+                                "visible_path_count": len(selector_request.visible_paths),
                                 "input_chars": len(selector_prompt),
                                 "call_number": task_state.selector_model_calls,
                             },

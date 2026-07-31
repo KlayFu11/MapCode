@@ -30,6 +30,8 @@ PHASE_BY_EVENT = {
 
 def build_runtime_event(runtime, task_state, event, payload):
     payload = dict(payload or {})
+    if event == "prompt_built":
+        _add_prompt_built_summaries(payload)
     payload["event"] = str(event)
     payload["created_at"] = now()
     payload.setdefault("trace_id", task_state.run_id)
@@ -48,6 +50,22 @@ def build_runtime_event(runtime, task_state, event, payload):
     payload.setdefault("span_id", f"span_{runtime._trace_seq:06d}")
     runtime._last_trace_span_id[task_state.run_id] = payload["span_id"]
     return payload
+
+
+def _add_prompt_built_summaries(payload):
+    metadata = payload.get("prompt_metadata")
+    if not isinstance(metadata, dict):
+        return
+    map_context = metadata.get("map_context")
+    if isinstance(map_context, dict):
+        payload["repo_map_render"] = {
+            key: map_context.get(key)
+            for key in ("section_rendered", "contract_rendered", "fallback_notice_rendered", "map_body_raw_chars", "map_body_rendered_chars", "section_rendered_chars", "section_rendered_hash", "base_prompt_reduction_applied", "omission_reason")
+        }
+    payload["request_budget"] = {
+        key: metadata.get(key)
+        for key in ("model_input_budget_tokens", "prompt_safety_margin_tokens", "active_repo_map_reservation_tokens", "base_prompt_budget_tokens", "estimated_request_tokens", "request_over_budget", "model_request_budget_source", "base_prompt_over_budget_with_repo_map_reservation")
+    }
 
 
 def _status_for(event, payload):
