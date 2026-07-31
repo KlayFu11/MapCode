@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F5-09 验证 feature disabled、无 MapContext 与四种 purpose`
+- 下一可执行任务：`V1-F6-01 Engine 在首次主模型 build 前执行 Branch A preparation`
 
 ## 阶段 0：固定施工地基
 
@@ -80,7 +80,7 @@
 - [x] V1-F5-06 ContextManager 组装独立 repo_map section (P0, 依赖 V1-F5-05)
 - [x] V1-F5-07 为完整 repo map 预留输入空间并缩减 base prompt (P0, 依赖 V1-F5-06)
 - [x] V1-F5-08 实现 repo map 原子注入或整段省略 (P0, 依赖 V1-F5-07)
-- [ ] V1-F5-09 验证 feature disabled、无 MapContext 与四种 purpose (P0, 依赖 V1-F5-08)
+- [x] V1-F5-09 验证 feature disabled、无 MapContext 与四种 purpose (P0, 依赖 V1-F5-08)
 
 ## 阶段 6：Branch A 与最终模型门禁
 

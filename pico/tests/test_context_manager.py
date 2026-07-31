@@ -116,7 +116,20 @@ def test_context_manager_assembles_sections_in_expected_order(tmp_path):
     assert metadata["section_order"] == ["prefix", "memory", "skills", "relevant_memory", "history", "current_request"]
 
 
-def test_context_manager_injects_complete_build_local_repo_map_for_main_and_preview(tmp_path):
+@pytest.mark.parametrize(
+    ("purpose", "repo_map_expected"),
+    [
+        ("main_model", True),
+        ("prompt_preview", True),
+        ("evaluation", False),
+        ("step_limit_summary", False),
+    ],
+)
+def test_context_manager_scopes_repo_map_to_main_and_preview_purposes(
+    tmp_path,
+    purpose,
+    repo_map_expected,
+):
     agent = build_agent(tmp_path, [])
     agent.record({"role": "user", "content": "old request", "created_at": "2026-04-07T09:59:00+00:00"})
     map_body = "pico/core/context_manager.py:\n  class ContextManager\n" + ("x" * 800)
@@ -127,10 +140,9 @@ def test_context_manager_injects_complete_build_local_repo_map_for_main_and_prev
     )
     manager = ContextManager(agent)
 
-    main_result = manager.build("Inspect the prompt.", purpose="main_model")
-    preview_result = manager.build("Inspect the prompt.", purpose="prompt_preview")
+    result = manager.build("Inspect the prompt.", purpose=purpose)
 
-    for result in (main_result, preview_result):
+    if repo_map_expected:
         render = result.repo_map_render
 
         assert result.prompt.index("Transcript:") < result.prompt.index("[Repo Map - Navigation Context Only]")
@@ -163,8 +175,12 @@ def test_context_manager_injects_complete_build_local_repo_map_for_main_and_prev
         }
         assert render.section_text.endswith(map_body)
         assert render.map_body_raw_chars == render.map_body_rendered_chars
+    else:
+        assert "[Repo Map - Navigation Context Only]" not in result.prompt
+        assert "repo_map" not in result.metadata["section_order"]
+        assert "map_context" not in result.metadata
+        assert result.repo_map_render is None
 
-    assert main_result.repo_map_render is not preview_result.repo_map_render
     assert agent.current_map_context.active_result.repo_map_text == map_body
 
 
@@ -216,6 +232,7 @@ def test_context_manager_reserves_complete_repo_map_before_reducing_base_section
     )
     assert metadata["base_prompt_chars"] <= metadata["effective_base_prompt_budget_chars"]
     assert metadata["base_prompt_over_budget"] is False
+    assert metadata["base_prompt_over_budget_with_repo_map_reservation"] is False
     assert metadata["budget_reductions"]
     assert render.base_prompt_reduction_applied is True
     assert metadata["map_context"]["base_prompt_reduction_applied"] is True
@@ -264,6 +281,8 @@ def test_context_manager_omits_repo_map_when_base_prompt_cannot_fit_at_floors(tm
     assert map_body not in result.prompt
     assert result.metadata["active_repo_map_reservation_tokens"] == 0
     assert result.metadata["base_prompt_budget_tokens"] == 280
+    assert result.metadata["base_prompt_over_budget"] is False
+    assert result.metadata["base_prompt_over_budget_with_repo_map_reservation"] is True
     assert result.metadata["estimated_request_tokens"] == model_request_budget.estimate_request_tokens(result.prompt)
     assert result.metadata["request_over_budget"] is model_request_budget.request_over_budget(result.prompt)
     assert "repo_map" not in result.metadata["section_order"]
@@ -317,18 +336,44 @@ def test_context_manager_marks_broad_fallback_notice_in_repo_map_render(tmp_path
     assert "No specific focus files were confirmed." in result.prompt
 
 
-@pytest.mark.parametrize("purpose", ["evaluation", "step_limit_summary"])
-def test_context_manager_excludes_repo_map_for_auxiliary_purposes(tmp_path, purpose):
+@pytest.mark.parametrize(
+    "purpose",
+    ["main_model", "prompt_preview", "evaluation", "step_limit_summary"],
+)
+def test_context_manager_feature_off_without_map_context_preserves_base_prompt(tmp_path, purpose):
     agent = build_agent(tmp_path, [])
-    set_current_map(agent, repo_map_text="repo map body " + ("x" * 800))
 
     result = ContextManager(agent).build("Inspect the prompt.", purpose=purpose)
 
+    assert agent.feature_enabled("map_engine") is False
+    assert agent.current_map_context is None
     assert "[Repo Map - Navigation Context Only]" not in result.prompt
     assert "repo_map" not in result.metadata["section_order"]
     assert "map_context" not in result.metadata
     assert result.repo_map_render is None
-    assert agent.current_map_context.active_result.repo_map_text.endswith("x" * 800)
+
+
+def test_context_manager_preview_build_keeps_main_repo_map_render_build_local(tmp_path):
+    agent = build_agent(tmp_path, [])
+    manager = ContextManager(agent)
+    main_map_body = "pico/core/runtime.py:\n  class Pico\n"
+    preview_map_body = "pico/core/engine.py:\n  class Engine\n"
+    set_current_map(agent, repo_map_text=main_map_body)
+
+    main_result = manager.build("Inspect the main prompt.", purpose="main_model")
+    main_section_text = main_result.repo_map_render.section_text
+    main_metadata = dict(main_result.metadata["map_context"])
+
+    set_current_map(agent, repo_map_text=preview_map_body)
+    preview_result = manager.build("Inspect the preview prompt.", purpose="prompt_preview")
+
+    assert main_result.repo_map_render is not preview_result.repo_map_render
+    assert main_result.repo_map_render.section_text == main_section_text
+    assert main_map_body in main_result.prompt
+    assert preview_map_body not in main_result.prompt
+    assert main_result.metadata["map_context"] == main_metadata
+    assert preview_map_body in preview_result.prompt
+    assert main_map_body not in preview_result.prompt
 
 
 def test_context_manager_reduces_relevant_memory_before_history_and_preserves_newer_context(tmp_path):

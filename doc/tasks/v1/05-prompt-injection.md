@@ -157,9 +157,9 @@
 - **依赖**：V1-F5-08
 - **输入**：当前最新 SPEC/PRD/FuncFlow、阶段 5 全部实现
 - **输出**：feature-off、purpose、预算与 prompt 回归 acceptance tests
-- **允许修改路径**：ContextManager/runtime acceptance tests
+- **允许修改路径**：`pico/pico/core/context_manager.py`、`pico/pico/core/runtime.py`、ContextManager/runtime acceptance tests
 - **禁止修改边界**：不得接入 Engine MapContext preparation 或 artifact
-- **步骤**：覆盖 feature disabled、current map None、四种 purpose、preview 不覆盖 main render、完整 reservation/reduction/omission metadata；验证 Branch A、Branch B focused、Branch B broad fallback 共用统一导航模板，且 `focus_files_display`、`active_repo_map_text` 只来自 active result。
+- **步骤**：覆盖 feature disabled、current map None、四种 purpose、preview 不覆盖 main render、完整 reservation/reduction/omission metadata；main model 必须依据省略前的完整 reservation 有效超预算事实先 auto-compact，再以实际最终 section 记录 omission metadata；验证 Branch A、Branch B focused、Branch B broad fallback 共用统一导航模板，且 `focus_files_display`、`active_repo_map_text` 只来自 active result。
 - **验证命令**：
   ```powershell
   .\.venv\Scripts\python.exe -m pytest pico\tests\test_context_manager.py pico\tests\test_context_governance_acceptance.py pico\tests\test_map_context_prompt.py -q

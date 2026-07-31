@@ -151,11 +151,16 @@ class ContextManager:
                 selected_notes=selected_notes,
             )
             base_prompt = self._assemble_prompt(rendered, base_section_order)
-            if self._repo_map_must_be_omitted(
+            repo_map_must_be_omitted = self._repo_map_must_be_omitted(
                 repo_map_render,
                 base_prompt,
                 base_prompt_budget,
-            ):
+            )
+            base_prompt_over_budget_with_repo_map_reservation = (
+                repo_map_must_be_omitted
+                or len(base_prompt) > base_prompt_budget["effective_chars"]
+            )
+            if repo_map_must_be_omitted:
                 repo_map_render = self._omit_repo_map_section(repo_map_render)
                 section_texts.pop(REPO_MAP_SECTION, None)
                 section_order = self._section_order(section_texts)
@@ -183,6 +188,9 @@ class ContextManager:
                 section_texts=section_texts,
                 section_order=section_order,
                 repo_map_render=repo_map_render,
+                base_prompt_over_budget_with_repo_map_reservation=(
+                    base_prompt_over_budget_with_repo_map_reservation
+                ),
             )
             return PromptBuildResult(
                 prompt=prompt,
@@ -241,11 +249,16 @@ class ContextManager:
             base_prompt_budget,
             reduction_log,
         )
-        if self._repo_map_must_be_omitted(
+        repo_map_must_be_omitted = self._repo_map_must_be_omitted(
             repo_map_render,
             base_prompt,
             base_prompt_budget,
-        ):
+        )
+        base_prompt_over_budget_with_repo_map_reservation = (
+            repo_map_must_be_omitted
+            or len(base_prompt) > base_prompt_budget["effective_chars"]
+        )
+        if repo_map_must_be_omitted:
             repo_map_render = self._omit_repo_map_section(repo_map_render)
             section_texts.pop(REPO_MAP_SECTION, None)
             section_order = self._section_order(section_texts)
@@ -271,6 +284,9 @@ class ContextManager:
             section_texts=section_texts,
             section_order=section_order,
             repo_map_render=repo_map_render,
+            base_prompt_over_budget_with_repo_map_reservation=(
+                base_prompt_over_budget_with_repo_map_reservation
+            ),
         )
         return PromptBuildResult(
             prompt=prompt,
@@ -560,6 +576,7 @@ class ContextManager:
         section_texts,
         section_order,
         repo_map_render,
+        base_prompt_over_budget_with_repo_map_reservation,
     ):
         model_request_budget = self.agent.model_request_budget
         section_metadata = {}
@@ -590,6 +607,9 @@ class ContextManager:
             "prompt_budget_chars": self.total_budget,
             "base_prompt_over_budget": (
                 len(base_prompt) > base_prompt_budget["effective_chars"]
+            ),
+            "base_prompt_over_budget_with_repo_map_reservation": (
+                base_prompt_over_budget_with_repo_map_reservation
             ),
             "prompt_over_budget": (
                 len(base_prompt) > base_prompt_budget["effective_chars"]

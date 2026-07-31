@@ -151,9 +151,18 @@ def test_auto_compaction_uses_repo_map_reserved_base_prompt_budget(tmp_path):
 
     assert agent.ask("finish") == "done"
 
-    assert agent.last_prompt_metadata["base_prompt_chars"] > (
-        agent.last_prompt_metadata["effective_base_prompt_budget_chars"]
-    )
-    assert agent.last_prompt_metadata["base_prompt_over_budget"] is True
-    assert agent.last_prompt_metadata["auto_compacted"] is True
+    metadata = agent.last_prompt_metadata
+
+    assert metadata["auto_compacted"] is True
+    assert metadata["base_prompt_over_budget"] is False
+    assert metadata["base_prompt_over_budget_with_repo_map_reservation"] is True
     assert any(item["trigger"] == "auto_prompt_over_budget" for item in agent.session["compactions"])
+    assert metadata["active_repo_map_reservation_tokens"] == 0
+    assert metadata["map_context"]["section_rendered"] is False
+    assert metadata["map_context"]["contract_rendered"] is False
+    assert metadata["map_context"]["map_body_rendered_chars"] == 0
+    assert metadata["map_context"]["section_rendered_chars"] == 0
+    assert metadata["map_context"]["omission_reason"] == "base_prompt_cannot_fit_with_repo_map_reservation"
+    assert "repo_map" not in metadata["section_order"]
+    assert "[Repo Map - Navigation Context Only]" not in agent.model_client.prompts[-1]
+    assert "pico/core/context_manager.py:\n" + ("M" * 600) not in agent.model_client.prompts[-1]
