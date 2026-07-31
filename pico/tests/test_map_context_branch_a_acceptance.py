@@ -5,6 +5,7 @@ from unittest.mock import ANY
 import pytest
 
 from pico import Pico, SessionStore, WorkspaceContext
+from pico.core.map_context_prompt import REPO_MAP_NAVIGATION_CONTRACT
 from pico.features.map_engine.models import PromptAnalysis
 from pico.providers import ProviderError
 from pico.testing import ScriptedModelClient
@@ -228,6 +229,62 @@ def test_branch_a_preparation_failure_emits_trace_and_continues_without_map(tmp_
     ]
     failure = next(event for event in trace_events if event["event"] == "map_context_failed")
     assert failure["error_type"] == "RuntimeError"
+    assert failure["fallback"] == "without_repo_map"
+    assert "map_generated" not in [event["event"] for event in trace_events]
+    assert all(
+        REPO_MAP_NAVIGATION_CONTRACT not in prompt
+        for prompt in agent.model_client.prompts
+    )
+
+
+def test_branch_a_artifact_failure_rebuilds_without_map_before_model_request(tmp_path):
+    agent = _runtime(tmp_path, ["<final>Fallback response.</final>"])
+    analysis = _analysis(mentioned_files=("src/auth.py",))
+    coordinator = _BranchACoordinator(analysis)
+    agent.map_context_coordinator = coordinator
+    build_contexts = []
+    build_prompts = []
+    original_build = agent._build_prompt_and_metadata
+
+    def record_main_build(user_message, *, purpose):
+        result = original_build(user_message, purpose=purpose)
+        if purpose == "main_model":
+            build_contexts.append(agent.current_map_context)
+            build_prompts.append(result.prompt)
+        return result
+
+    def fail_finalization(task_state, result, repo_map_render):
+        coordinator.calls.append(("finalize_prompt_context", repo_map_render))
+        assert result is coordinator.prepared_context
+        raise OSError("artifact device unavailable")
+
+    coordinator.finalize_prompt_context = fail_finalization
+    agent._build_prompt_and_metadata = record_main_build
+
+    assert agent.engine.ask("Explain the target.") == "Fallback response."
+
+    assert coordinator.calls == [
+        ("analyze_turn", "Explain the target."),
+        ("prepare_specific", analysis),
+        ("finalize_prompt_context", ANY),
+    ]
+    assert build_contexts == [coordinator.prepared_context, None]
+    assert REPO_MAP_NAVIGATION_CONTRACT in build_prompts[0]
+    assert REPO_MAP_NAVIGATION_CONTRACT not in build_prompts[1]
+    assert agent.model_client.prompts == [build_prompts[1]]
+    assert agent.current_map_context is None
+
+    trace_events = [
+        json.loads(line)
+        for line in (agent.current_run_dir / "trace.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert [event["event"] for event in trace_events].count("prompt_built") == 1
+    assert "map_generated" not in [event["event"] for event in trace_events]
+    failure = next(event for event in trace_events if event["event"] == "map_context_failed")
+    assert failure["error_type"] == "OSError"
+    assert failure["fallback"] == "without_repo_map"
 
 
 @pytest.mark.parametrize("feature_flags, coordinator", [({}, None), ({"map_engine": True}, None)])

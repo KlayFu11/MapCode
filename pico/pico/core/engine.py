@@ -133,14 +133,20 @@ class Engine:
                 and agent.current_map_context is not None
                 and prompt_build_result.repo_map_render is not None
             ):
-                agent.current_map_context = (
-                    agent.map_context_coordinator.finalize_prompt_context(
-                        task_state,
-                        agent.current_map_context,
-                        prompt_build_result.repo_map_render,
+                try:
+                    agent.current_map_context = (
+                        agent.map_context_coordinator.finalize_prompt_context(
+                            task_state,
+                            agent.current_map_context,
+                            prompt_build_result.repo_map_render,
+                        )
                     )
-                )
-                map_context_finalized = True
+                    map_context_finalized = True
+                except Exception as exc:
+                    self._discard_map_context(task_state, exc)
+                    prompt_build_result = agent._build_prompt_and_metadata(
+                        user_message, purpose="main_model"
+                    )
             prompt = prompt_build_result.prompt
             prompt_metadata = dict(prompt_build_result.metadata)
             agent.emit_trace(
@@ -491,13 +497,17 @@ class Engine:
                     task_state, analysis
                 )
         except Exception as exc:
-            agent.current_map_context = None
-            agent.emit_trace(
-                task_state,
-                "map_context_failed",
-                {
-                    "error_type": type(exc).__name__,
-                    "message": str(exc),
-                    "fallback": "without_repo_map",
-                },
-            )
+            self._discard_map_context(task_state, exc)
+
+    def _discard_map_context(self, task_state, exc):
+        agent = self.runtime
+        agent.current_map_context = None
+        agent.emit_trace(
+            task_state,
+            "map_context_failed",
+            {
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "fallback": "without_repo_map",
+            },
+        )
