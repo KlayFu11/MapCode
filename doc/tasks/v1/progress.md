@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F6-09 增加 Branch A scripted acceptance test`
+- 下一可执行任务：`V1-F7-01 实现 selector request builder、parser 和 visible path 校验`
 
 ## 阶段 0：固定施工地基
 
@@ -92,7 +92,7 @@
 - [x] V1-F6-06 repo map 无法共存时重建无 map prompt (P0, 依赖 V1-F6-05)
 - [x] V1-F6-07 执行最终请求硬门禁与模型调用计数 (P0, 依赖 V1-F6-06)
 - [x] V1-F6-08 所有退出路径统一清理 current map (P0, 依赖 V1-F6-04/V1-F6-05/V1-F6-06/V1-F6-07)
-- [ ] V1-F6-09 增加 Branch A scripted acceptance test (P0, 依赖 V1-F6-08)
+- [x] V1-F6-09 增加 Branch A scripted acceptance test (P0, 依赖 V1-F6-08)
 
 ## 阶段 7：Branch B Selector 与确认流
 

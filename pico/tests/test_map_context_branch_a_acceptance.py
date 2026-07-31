@@ -1,5 +1,8 @@
 import json
+import shutil
+import subprocess
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import ANY
 
@@ -13,6 +16,30 @@ from pico.core.map_context_prompt import (
 from pico.features.map_engine.models import PromptAnalysis
 from pico.providers import ProviderError
 from pico.testing import ScriptedModelClient
+
+
+OFFLINE_DEMO_FIXTURE = Path(__file__).parent / "fixtures" / "map_engine" / "offline_demo"
+
+
+def _git(repo, *args):
+    subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+        timeout=5,
+    )
+
+
+def _copy_offline_demo_repo(tmp_path):
+    repo = tmp_path / "offline_demo"
+    shutil.copytree(OFFLINE_DEMO_FIXTURE, repo)
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "mapcode@example.test")
+    _git(repo, "config", "user.name", "MapCode Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "offline demo fixture")
+    return repo
 
 
 def _runtime(tmp_path, outputs, **kwargs):
@@ -456,3 +483,124 @@ def test_without_enabled_coordinator_keeps_the_existing_main_model_flow(
 
     assert agent.engine.ask("Explain the target.") == "Unchanged."
     assert agent.current_map_context is None
+
+
+@pytest.mark.parametrize(
+    (
+        "user_message",
+        "read_path",
+        "expected_analysis",
+        "expected_focus_files",
+        "expected_path_ident_hits",
+    ),
+    (
+        (
+            "Inspect app.py before explaining the authorization flow.",
+            "app.py",
+            {"mentioned_files": ["app.py"], "effective_symbol_hits": []},
+            ["app.py"],
+            ["app"],
+        ),
+        (
+            "Inspect JWTAuth before explaining the authorization flow.",
+            "pkg/auth.py",
+            {"mentioned_files": [], "effective_symbol_hits": ["JWTAuth"]},
+            [],
+            [],
+        ),
+        (
+            "Inspect PKG before explaining the authorization flow.",
+            "pkg/auth.py",
+            {"mentioned_files": [], "effective_symbol_hits": []},
+            [],
+            ["PKG"],
+        ),
+    ),
+    ids=("file", "symbol-only", "path-ident-only"),
+)
+def test_branch_a_offline_demo_vertical_slice_preserves_prompt_evidence_and_trace_order(
+    tmp_path,
+    user_message,
+    read_path,
+    expected_analysis,
+    expected_focus_files,
+    expected_path_ident_hits,
+):
+    repo = _copy_offline_demo_repo(tmp_path)
+    model_client = ScriptedModelClient(
+        [
+            '<tool>{"name":"read_file","args":{"path":"%s","start":1,"end":80}}</tool>'
+            % read_path,
+            "<final>Offline Branch A complete.</final>",
+        ]
+    )
+    agent = Pico(
+        model_client=model_client,
+        workspace=WorkspaceContext.build(repo),
+        session_store=SessionStore(repo / ".pico" / "sessions"),
+        approval_policy="auto",
+        feature_flags={"map_engine": True},
+    )
+
+    events = list(agent.engine.run_turn(user_message))
+
+    assert events[-2]["content"] == "Offline Branch A complete."
+    assert agent.current_task_state.main_model_calls == 2
+    assert agent.current_task_state.selector_model_calls == 0
+    assert [item["name"] for item in agent.session["history"] if item["role"] == "tool"] == [
+        "read_file"
+    ]
+    assert len(model_client.prompts) == 2
+    assert all(
+        prompt.count(REPO_MAP_NAVIGATION_CONTRACT) == 1
+        for prompt in model_client.prompts
+    )
+
+    artifacts_dir = agent.current_run_dir / "artifacts"
+    repo_map_path = artifacts_dir / "repo-map-001.txt"
+    evidence_path = artifacts_dir / "map-evidence-001.json"
+    repo_map_section = repo_map_path.read_text(encoding="utf-8")
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    task_state = json.loads(
+        (agent.current_run_dir / "task_state.json").read_text(encoding="utf-8")
+    )
+    trace_events = [
+        json.loads(line)
+        for line in (agent.current_run_dir / "trace.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    trace_names = [event["event"] for event in trace_events]
+
+    assert all(prompt.count(repo_map_section) == 1 for prompt in model_client.prompts)
+    assert evidence["branch"] == "specific"
+    assert evidence["stage"] == "execution"
+    assert evidence["selection_decision"] is None
+    assert evidence["active_result"]["focus_fnames"] == expected_focus_files
+    assert evidence["analysis"]["branch"] == "specific"
+    assert evidence["analysis"]["mentioned_files"] == expected_analysis["mentioned_files"]
+    assert (
+        evidence["analysis"]["effective_symbol_hits"]
+        == expected_analysis["effective_symbol_hits"]
+    )
+    assert evidence["analysis"]["path_ident_hits"] == expected_path_ident_hits
+    if expected_path_ident_hits:
+        assert evidence["active_result"]["evidence"]["ranking"][
+            "path_personalization_files"
+        ]
+
+    map_summary = task_state["map_context_summary"]
+    assert map_summary["branch"] == "specific"
+    assert map_summary["selector_model_calls"] == 0
+    assert map_summary["focus_fnames"] == expected_focus_files
+    assert map_summary["repo_map_artifact_path"].endswith("repo-map-001.txt")
+    assert map_summary["evidence_artifact_path"].endswith("map-evidence-001.json")
+    assert trace_names.index("run_started") < trace_names.index("map_index_status")
+    assert trace_names.index("map_index_status") < trace_names.index("map_prompt_analyzed")
+    assert trace_names.index("map_prompt_analyzed") < trace_names.index("map_context_ranked")
+    assert trace_names.index("map_context_ranked") < trace_names.index("map_context_selected")
+    assert trace_names.index("map_context_selected") < trace_names.index("map_generated")
+    assert trace_names.index("map_generated") < trace_names.index("prompt_built")
+    assert trace_names.index("prompt_built") < trace_names.index("model_requested")
+    assert trace_names.count("model_requested") == 2
+    assert trace_names.count("tool_executed") == 1
