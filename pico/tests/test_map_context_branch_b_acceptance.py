@@ -111,6 +111,16 @@ class _RecordingCoordinator:
         return self.prepared_context
 
 
+class _RoleRecordingModelClient(ScriptedModelClient):
+    def __init__(self, outputs):
+        super().__init__(outputs)
+        self.calls = []
+
+    def complete(self, prompt, max_new_tokens, **kwargs):
+        self.calls.append((prompt, max_new_tokens, dict(kwargs)))
+        return super().complete(prompt, max_new_tokens, **kwargs)
+
+
 def _agent(repo, outputs):
     return Pico(
         model_client=ScriptedModelClient(outputs),
@@ -202,3 +212,92 @@ def test_branch_a_signal_does_not_prepare_broad_or_selector_catalog(tmp_path):
     assert coordinator.calls == ["analyze_turn", "prepare_specific"]
     assert "broad_ready" not in [event["type"] for event in events]
     assert agent.current_task_state.selector_model_calls == 0
+
+
+def test_fuzzy_selector_uses_separate_provider_roles_and_traces_before_main_model(
+    tmp_path,
+):
+    repo = _copy_offline_demo_repo(tmp_path)
+    model_client = _RoleRecordingModelClient(
+        [
+            json.dumps(
+                {
+                    "suggested_files": ["pkg/service.py"],
+                    "reasoning": "Service code is relevant.",
+                }
+            ),
+            "<final>Selector call completed.</final>",
+        ]
+    )
+    agent = Pico(
+        model_client=model_client,
+        workspace=WorkspaceContext.build(repo),
+        session_store=SessionStore(repo / ".pico" / "sessions"),
+        approval_policy="auto",
+        feature_flags={"map_engine": True},
+    )
+    coordinator = _RecordingCoordinator(agent.map_context_coordinator, _analysis(branch="fuzzy"))
+    agent.map_context_coordinator = coordinator
+
+    events = list(agent.engine.run_turn("Explain the repository architecture."))
+
+    expected_request = build_selector_request(
+        "Explain the repository architecture.",
+        coordinator.broad_result,
+        coordinator.selector_catalog,
+    )
+    assert coordinator.calls == [
+        "analyze_turn",
+        "prepare_broad",
+        "build_selector_catalog",
+    ]
+    assert len(model_client.calls) == 2
+    selector_call, main_call = model_client.calls
+    assert selector_call == (
+        expected_request.user_prompt,
+        agent.max_new_tokens,
+        {"system_prompt": expected_request.system_prompt},
+    )
+    assert "system_prompt" not in main_call[2]
+    assert agent.current_task_state.attempts == 1
+    assert agent.current_task_state.main_model_calls == 1
+    assert agent.current_task_state.selector_model_calls == 1
+    assert [event["type"] for event in events].index("broad_ready") < [
+        event["type"] for event in events
+    ].index("model_requested")
+
+    trace_rows = [
+        json.loads(line)
+        for line in (agent.current_run_dir / "trace.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    selector_trace_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "map_selector_requested"
+    )
+    model_requested_index = next(
+        index
+        for index, row in enumerate(trace_rows)
+        if row["event"] == "model_requested"
+    )
+    assert selector_trace_index < model_requested_index
+    assert {
+        key: trace_rows[selector_trace_index][key]
+        for key in (
+            "index_snapshot_id",
+            "candidate_path_count",
+            "rendered_path_count",
+            "input_chars",
+            "call_number",
+        )
+    } == {
+        "index_snapshot_id": coordinator.broad_result.evidence.index_snapshot_id,
+        "candidate_path_count": len(coordinator.selector_catalog.candidate_paths),
+        "rendered_path_count": len(coordinator.selector_catalog.rendered_paths),
+        "input_chars": len(
+            expected_request.system_prompt + expected_request.user_prompt
+        ),
+        "call_number": 1,
+    }

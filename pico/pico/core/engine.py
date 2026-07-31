@@ -17,7 +17,11 @@ from .engine_helpers import (
     should_retry_model_error,
 )
 from .map_context_reporter import MapEngineConsoleReporter
-from .map_selector import SelectionDecision, build_selector_request
+from .map_selector import (
+    SelectionDecision,
+    build_selector_request,
+    parse_selector_output,
+)
 from .task_state import TaskState
 from .workspace import clip, now
 
@@ -570,6 +574,30 @@ class Engine:
                         task_state,
                         broad_result,
                         decision,
+                    )
+                else:
+                    task_state.record_selector_model_call()
+                    agent.run_store.write_task_state(task_state)
+                    agent.emit_trace(
+                        task_state,
+                        "map_selector_requested",
+                        {
+                            "index_snapshot_id": broad_result.evidence.index_snapshot_id,
+                            "candidate_path_count": len(selector_catalog.candidate_paths),
+                            "rendered_path_count": len(selector_catalog.rendered_paths),
+                            "input_chars": len(selector_prompt),
+                            "call_number": task_state.selector_model_calls,
+                        },
+                    )
+                    selector_response = complete_model(
+                        agent.model_client,
+                        selector_request.user_prompt,
+                        agent.max_new_tokens,
+                        system_prompt=selector_request.system_prompt,
+                    )
+                    parse_selector_output(
+                        selector_response.text,
+                        frozenset(selector_request.visible_paths),
                     )
         except Exception as exc:
             self._discard_map_context(task_state, exc)
