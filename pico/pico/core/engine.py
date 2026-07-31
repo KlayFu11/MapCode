@@ -105,6 +105,7 @@ class Engine:
         tool_steps = 0
         attempts = 0
         provider_retries = {}
+        map_context_finalized = False
         # 不放大 attempts，避免出现"看不见的隐形重试"——失败必须被用户察觉。
         max_attempts = agent.max_steps + 2
 
@@ -127,6 +128,17 @@ class Engine:
             prompt_build_result = agent._build_prompt_and_metadata(
                 user_message, purpose="main_model"
             )
+            if (
+                not map_context_finalized
+                and agent.current_map_context is not None
+                and prompt_build_result.repo_map_render is not None
+            ):
+                agent.map_context_coordinator.finalize_prompt_context(
+                    task_state,
+                    agent.current_map_context,
+                    prompt_build_result.repo_map_render,
+                )
+                map_context_finalized = True
             prompt = prompt_build_result.prompt
             prompt_metadata = dict(prompt_build_result.metadata)
             agent.emit_trace(

@@ -1,5 +1,6 @@
 import json
 from types import SimpleNamespace
+from unittest.mock import ANY
 
 import pytest
 
@@ -55,6 +56,10 @@ class _BranchACoordinator:
         )
         return self.context
 
+    def finalize_prompt_context(self, task_state, result, repo_map_render):
+        self.calls.append(("finalize_prompt_context", repo_map_render))
+        return result
+
 
 @pytest.mark.parametrize(
     "analysis",
@@ -92,6 +97,7 @@ def test_branch_a_prepares_once_after_run_started_before_first_main_build(
     assert coordinator.calls == [
         ("analyze_turn", "Explain the target."),
         ("prepare_specific", analysis),
+        ("finalize_prompt_context", ANY),
     ]
     assert build_contexts == [coordinator.context, coordinator.context]
     assert coordinator.context.active_result.focus_fnames == analysis.mentioned_files
