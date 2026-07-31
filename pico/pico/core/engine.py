@@ -556,80 +556,78 @@ class Engine:
             elif analysis.branch == "fuzzy" and not has_branch_a_signal:
                 broad_result = coordinator.prepare_broad(task_state, analysis)
                 yield self._broad_ready_event(task_state, broad_result)
-                selector_catalog = coordinator.build_selector_catalog(
-                    task_state, broad_result
-                )
-                selector_request = build_selector_request(
-                    user_message,
-                    broad_result,
-                    selector_catalog,
-                )
-                selector_prompt = (
-                    selector_request.system_prompt + selector_request.user_prompt
-                )
-                if agent.model_request_budget.request_over_budget(selector_prompt):
-                    decision = SelectionDecision.broad_fallback(
-                        "selector_request_over_budget"
-                    )
-                    agent.current_map_context = coordinator.prepare_fuzzy(
-                        task_state,
-                        broad_result,
-                        decision,
-                    )
+                if not self._can_confirm_focus():
+                    decision = SelectionDecision.broad_fallback("one_shot_no_confirm")
                 else:
-                    task_state.record_selector_model_call()
-                    agent.run_store.write_task_state(task_state)
-                    agent.emit_trace(
-                        task_state,
-                        "map_selector_requested",
-                        {
-                            "index_snapshot_id": broad_result.evidence.index_snapshot_id,
-                            "candidate_path_count": len(selector_catalog.candidate_paths),
-                            "rendered_path_count": len(selector_catalog.rendered_paths),
-                            "input_chars": len(selector_prompt),
-                            "call_number": task_state.selector_model_calls,
-                        },
+                    selector_catalog = coordinator.build_selector_catalog(
+                        task_state, broad_result
                     )
-                    selector_response = complete_model(
-                        agent.model_client,
-                        selector_request.user_prompt,
-                        agent.max_new_tokens,
-                        system_prompt=selector_request.system_prompt,
+                    selector_request = build_selector_request(
+                        user_message, broad_result, selector_catalog
                     )
-                    selector_result = parse_selector_output(
-                        selector_response.text,
-                        frozenset(selector_request.visible_paths),
+                    selector_prompt = (
+                        selector_request.system_prompt + selector_request.user_prompt
                     )
-                    if selector_result.suggested_files:
-                        answer = agent.ask_user(
-                            question=render_selector_confirmation(
-                                selector_result.suggested_files
-                            ),
-                            choices=["接受全部建议", "使用 broad map"],
+                    if agent.model_request_budget.request_over_budget(selector_prompt):
+                        decision = SelectionDecision.broad_fallback(
+                            "selector_request_over_budget"
                         )
-                        decision = SelectionDecision.from_single_choice(
-                            selector_result,
-                            answer,
-                        )
-                        if decision.confirmed_files:
-                            agent.emit_trace(
-                                task_state,
-                                "map_focus_confirmed",
-                                {
-                                    "suggested": list(
-                                        selector_result.suggested_files
-                                    ),
-                                    "invalid": list(selector_result.invalid_files),
-                                    "confirmed": list(decision.confirmed_files),
-                                },
-                            )
-                        agent.current_map_context = coordinator.prepare_fuzzy(
+                    else:
+                        task_state.record_selector_model_call()
+                        agent.run_store.write_task_state(task_state)
+                        agent.emit_trace(
                             task_state,
-                            broad_result,
-                            decision,
+                            "map_selector_requested",
+                            {
+                                "index_snapshot_id": broad_result.evidence.index_snapshot_id,
+                                "candidate_path_count": len(selector_catalog.candidate_paths),
+                                "rendered_path_count": len(selector_catalog.rendered_paths),
+                                "input_chars": len(selector_prompt),
+                                "call_number": task_state.selector_model_calls,
+                            },
                         )
+                        selector_response = complete_model(
+                            agent.model_client,
+                            selector_request.user_prompt,
+                            agent.max_new_tokens,
+                            system_prompt=selector_request.system_prompt,
+                        )
+                        selector_result = parse_selector_output(
+                            selector_response.text,
+                            frozenset(selector_request.visible_paths),
+                        )
+                        if not selector_result.suggested_files:
+                            decision = SelectionDecision.broad_fallback(
+                                "selector_no_valid_files", selector_result
+                            )
+                        else:
+                            answer = agent.ask_user(
+                                question=render_selector_confirmation(
+                                    selector_result.suggested_files
+                                ),
+                                choices=["接受全部建议", "使用 broad map"],
+                            )
+                            decision = SelectionDecision.from_single_choice(
+                                selector_result, answer
+                            )
+                            if decision.confirmed_files:
+                                agent.emit_trace(
+                                    task_state,
+                                    "map_focus_confirmed",
+                                    {
+                                        "suggested": list(selector_result.suggested_files),
+                                        "invalid": list(selector_result.invalid_files),
+                                        "confirmed": list(decision.confirmed_files),
+                                    },
+                                )
+                agent.current_map_context = coordinator.prepare_fuzzy(
+                    task_state, broad_result, decision
+                )
         except Exception as exc:
             self._discard_map_context(task_state, exc)
+
+    def _can_confirm_focus(self):
+        return callable(getattr(self.runtime, "ask_user_callback", None))
 
     def _broad_ready_event(self, task_state, broad_result):
         report = MapEngineConsoleReporter().render_map_result(

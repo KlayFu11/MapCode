@@ -146,6 +146,7 @@ def test_fuzzy_selector_budget_fallback_reuses_broad_snapshot_without_selector_c
         expected_catalog,
     )
     agent = _agent(repo, ["<final>Broad fallback is ready.</final>"])
+    agent.ask_user_callback = lambda question, choices: "使用 broad map"
     coordinator = _RecordingCoordinator(agent.map_context_coordinator, analysis)
     agent.map_context_coordinator = coordinator
     agent.model_request_budget = _RecordingBudget(
@@ -196,6 +197,97 @@ def test_fuzzy_selector_budget_fallback_reuses_broad_snapshot_without_selector_c
     ]
     assert "map_selector_requested" not in trace_events
     assert agent.model_client.prompts and len(agent.model_client.prompts) == 1
+
+
+def test_fuzzy_fallbacks_prepare_the_same_broad_snapshot_once(tmp_path):
+    repo = _copy_offline_demo_repo(tmp_path)
+    request = "Explain the repository architecture."
+    selector_response = json.dumps(
+        {
+            "suggested_files": ["pkg/service.py"],
+            "reasoning": "Service behavior is relevant.",
+        }
+    )
+    cases = (
+        ("one_shot_no_confirm", None, 0, 0),
+        ("selector_request_over_budget", "budget", 0, 0),
+        ("selector_no_valid_files", "not json", 1, 0),
+        ("user_selected_broad", "使用 broad map", 1, 1),
+        ("user_cancelled", "", 1, 1),
+        ("invalid_confirmation", "unexpected", 1, 1),
+    )
+
+    for reason, answer, selector_calls, confirmation_calls in cases:
+        outputs = ["<final>Broad fallback is ready.</final>"]
+        if selector_calls:
+            outputs.insert(
+                0,
+                "not json"
+                if reason == "selector_no_valid_files"
+                else selector_response,
+            )
+        model_client = _RoleRecordingModelClient(outputs)
+        confirmations = []
+
+        def ask_user(question, choices):
+            confirmations.append((question, choices))
+            return answer
+
+        agent = Pico(
+            model_client=model_client,
+            workspace=WorkspaceContext.build(repo),
+            session_store=SessionStore(repo / ".pico" / "sessions"),
+            approval_policy="auto",
+            feature_flags={"map_engine": True},
+            ask_user_callback=None if answer is None else ask_user,
+        )
+        coordinator = _RecordingCoordinator(
+            agent.map_context_coordinator, _analysis(branch="fuzzy")
+        )
+        agent.map_context_coordinator = coordinator
+        if answer == "budget":
+            expected_engine = MapEngine(repo)
+            expected_engine.ensure_index()
+            expected_request = build_selector_request(
+                request,
+                expected_engine.generate_broad(_analysis(branch="fuzzy")),
+                expected_engine.build_selector_catalog(),
+            )
+            agent.model_request_budget = _RecordingBudget(
+                agent.model_request_budget,
+                expected_request.system_prompt + expected_request.user_prompt,
+            )
+
+        events = list(agent.engine.run_turn(request))
+
+        expected_calls = ["analyze_turn", "prepare_broad"]
+        if reason != "one_shot_no_confirm":
+            expected_calls.append("build_selector_catalog")
+        expected_calls.append("prepare_fuzzy")
+        assert coordinator.calls == expected_calls
+        if reason != "one_shot_no_confirm":
+            assert coordinator.selector_catalog_broad is coordinator.broad_result
+        assert coordinator.prepared_context.stage == "fallback"
+        assert coordinator.prepared_context.active_result is coordinator.broad_result
+        assert coordinator.decision.fallback_reason == reason
+        assert not coordinator.decision.confirmed_files
+        if reason == "selector_no_valid_files":
+            assert coordinator.decision.selector_result is not None
+        assert agent.current_task_state.selector_model_calls == selector_calls
+        assert agent.current_task_state.main_model_calls == 1
+        assert len(model_client.calls) == selector_calls + 1
+        assert [event["type"] for event in events].count("model_requested") == 1
+
+        trace_events = [
+            json.loads(line)["event"]
+            for line in (agent.current_run_dir / "trace.jsonl").read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        assert ("map_selector_requested" in trace_events) is (selector_calls == 1)
+        assert "map_focus_confirmed" not in trace_events
+        assert "map_context_failed" not in trace_events
+        assert len(confirmations) == confirmation_calls
 
 
 def test_branch_a_signal_does_not_prepare_broad_or_selector_catalog(tmp_path):
