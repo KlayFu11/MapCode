@@ -1,5 +1,6 @@
 from pico.core.task_state import (
     STOP_REASON_FINAL_ANSWER_RETURNED,
+    STOP_REASON_REQUEST_OVER_BUDGET,
     STOP_REASON_RETRY_LIMIT_REACHED,
     STOP_REASON_STEP_LIMIT_REACHED,
     TaskState,
@@ -55,6 +56,15 @@ def test_task_state_records_retry_limit_stop_reason():
 
     assert state.status == "stopped"
     assert state.stop_reason == STOP_REASON_RETRY_LIMIT_REACHED
+
+
+def test_task_state_records_request_over_budget_stop_reason():
+    state = TaskState.create(run_id="run_003b", task_id="task_003b", user_request="Try again.")
+
+    state.stop_request_over_budget()
+
+    assert state.status == "stopped"
+    assert state.stop_reason == STOP_REASON_REQUEST_OVER_BUDGET
 
 
 def test_task_state_snapshot_keeps_final_answer():

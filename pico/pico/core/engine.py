@@ -236,12 +236,32 @@ class Engine:
                         "trigger": "context_reduction",
                     },
                 )
+            if prompt_metadata.get("request_over_budget"):
+                final = (
+                    "Stopped locally because the final prompt exceeds the configured "
+                    "model input budget."
+                )
+                task_state.stop_request_over_budget(final)
+                yield from finish_limited_run(
+                    self, task_state, user_message, final, run_started_at
+                )
+                return
+
+            prompt_cache_key = None
+            prompt_cache_retention = None
+            if getattr(agent.model_client, "supports_prompt_cache", False):
+                prompt_cache_key = prompt_metadata.get("prompt_cache_key")
+                prompt_cache_retention = "in_memory"
+
+            task_state.record_main_model_call()
+            agent.run_store.write_task_state(task_state)
             agent.emit_trace(
                 task_state,
                 "model_requested",
                 {
                     "attempts": task_state.attempts,
                     "tool_steps": task_state.tool_steps,
+                    "main_model_calls": task_state.main_model_calls,
                     "prompt_cache_key": prompt_metadata.get("prompt_cache_key"),
                 },
             )
@@ -251,6 +271,7 @@ class Engine:
                     "run_id": task_state.run_id,
                     "attempts": task_state.attempts,
                     "tool_steps": task_state.tool_steps,
+                    "main_model_calls": task_state.main_model_calls,
                 },
             )
             yield {
@@ -258,13 +279,8 @@ class Engine:
                 "run_id": task_state.run_id,
                 "attempts": task_state.attempts,
                 "tool_steps": task_state.tool_steps,
+                "main_model_calls": task_state.main_model_calls,
             }
-
-            prompt_cache_key = None
-            prompt_cache_retention = None
-            if getattr(agent.model_client, "supports_prompt_cache", False):
-                prompt_cache_key = prompt_metadata.get("prompt_cache_key")
-                prompt_cache_retention = "in_memory"
 
             model_started_at = time.monotonic()
             try:

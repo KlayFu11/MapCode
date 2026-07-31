@@ -15,6 +15,7 @@ STATUS_FAILED = "failed"
 STOP_REASON_FINAL_ANSWER_RETURNED = "final_answer_returned"
 STOP_REASON_STEP_LIMIT_REACHED = "step_limit_reached"
 STOP_REASON_RETRY_LIMIT_REACHED = "retry_limit_reached"
+STOP_REASON_REQUEST_OVER_BUDGET = "request_over_budget"
 STOP_REASON_MODEL_ERROR = "model_error"
 STOP_REASON_TOOL_TIMEOUT = "tool_timeout"
 STOP_REASON_APPROVAL_DENIED = "approval_denied"
@@ -106,6 +107,9 @@ class TaskState:
 
     def stop_retry_limit(self, final_answer=""):
         return self.stop(STOP_REASON_RETRY_LIMIT_REACHED, final_answer=final_answer)
+
+    def stop_request_over_budget(self, final_answer=""):
+        return self.stop(STOP_REASON_REQUEST_OVER_BUDGET, final_answer=final_answer)
 
     def stop_model_error(self, final_answer=""):
         return self.stop(STOP_REASON_MODEL_ERROR, status=STATUS_FAILED, final_answer=final_answer)

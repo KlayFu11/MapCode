@@ -4,6 +4,10 @@ from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.core.context_manager import ContextManager
 from pico.core.engine_helpers import request_step_limit_summary
+from pico.core.model_request_budget import (
+    MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+    ModelRequestBudget,
+)
 from pico.core.task_state import TaskState
 from pico.providers import ProviderError
 
@@ -62,6 +66,7 @@ def test_engine_streams_a_real_session_with_tool_artifacts(tmp_path):
     assert events[-2]["content"] == "Wrote it."
     assert purposes == ["main_model", "main_model"]
     assert (tmp_path / "notes" / "result.txt").read_text(encoding="utf-8") == "ok\n"
+    assert agent.current_task_state.main_model_calls == 2
 
     persisted_events = read_jsonl(agent.session_event_bus.path)
     assert [event["event"] for event in persisted_events][-6:] == [
@@ -72,6 +77,17 @@ def test_engine_streams_a_real_session_with_tool_artifacts(tmp_path):
         "assistant_message",
         "turn_finished",
     ]
+    trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    assert [
+        event["main_model_calls"]
+        for event in trace_events
+        if event["event"] == "model_requested"
+    ] == [1, 2]
+    assert [
+        event["event"]
+        for event in trace_events
+        if event["event"] in {"prompt_built", "model_requested"}
+    ] == ["prompt_built", "model_requested", "prompt_built", "model_requested"]
 
     report_path = agent.current_run_dir / "report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -172,6 +188,50 @@ def test_empty_response_provider_error_is_retried_once_before_failing(tmp_path):
         event["event"] == "model_retry_scheduled" and event["code"] == "empty_response"
         for event in persisted_events
     )
+    assert agent.current_task_state.main_model_calls == 2
+    trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    assert [
+        event["main_model_calls"]
+        for event in trace_events
+        if event["event"] == "model_requested"
+    ] == [1, 2]
+
+
+def test_engine_stops_locally_when_final_prompt_is_over_model_request_budget(tmp_path):
+    model_request_budget = ModelRequestBudget(
+        provider="test",
+        model="test-model",
+        model_input_budget_tokens=1,
+        prompt_safety_margin_tokens=0,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="explicit",
+    )
+    agent = build_agent(
+        tmp_path,
+        ["<final>This must not reach the provider.</final>"],
+        model_request_budget=model_request_budget,
+    )
+
+    events = list(agent.engine.run_turn("a request that exceeds the final budget"))
+
+    assert [event["type"] for event in events] == [
+        "turn_started",
+        "stop",
+        "turn_finished",
+    ]
+    assert agent.model_client.prompts == []
+    assert agent.current_task_state.attempts == 1
+    assert agent.current_task_state.main_model_calls == 0
+    assert agent.current_task_state.selector_model_calls == 0
+
+    report = json.loads(
+        (agent.current_run_dir / "report.json").read_text(encoding="utf-8")
+    )
+    assert report["status"] == "stopped"
+    assert report["stop_reason"] == "request_over_budget"
+    trace_events = read_jsonl(agent.current_run_dir / "trace.jsonl")
+    assert not any(event["event"] == "model_requested" for event in trace_events)
+    assert not any(event["event"] == "model_error" for event in trace_events)
 
 
 def test_worker_notification_drained_during_turn_is_streamed(tmp_path):
