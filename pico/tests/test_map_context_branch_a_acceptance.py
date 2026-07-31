@@ -6,6 +6,7 @@ import pytest
 
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.features.map_engine.models import PromptAnalysis
+from pico.providers import ProviderError
 from pico.testing import ScriptedModelClient
 
 
@@ -130,6 +131,82 @@ def test_branch_a_prepares_once_after_run_started_before_first_main_build(
         ).splitlines()
     ]
     assert trace_events.index("run_started") < trace_events.index("prompt_built")
+
+
+def test_branch_a_tool_loop_and_provider_retry_reuse_finalized_map_context(tmp_path):
+    agent = _runtime(
+        tmp_path,
+        [
+            '<tool name="list_files" path="."></tool>',
+            ProviderError(
+                "empty provider response",
+                code="empty_response",
+            ),
+            "<final>Recovered after retry.</final>",
+        ],
+    )
+    analysis = _analysis(mentioned_files=("src/auth.py",))
+    coordinator = _BranchACoordinator(analysis)
+    agent.map_context_coordinator = coordinator
+    build_contexts = []
+    original_build = agent._build_prompt_and_metadata
+
+    def record_main_build(user_message, *, purpose):
+        if purpose == "main_model":
+            build_contexts.append(agent.current_map_context)
+        return original_build(user_message, purpose=purpose)
+
+    agent._build_prompt_and_metadata = record_main_build
+
+    events = list(agent.engine.run_turn("Inspect the auth implementation."))
+
+    assert events[-2]["content"] == "Recovered after retry."
+    assert [event["type"] for event in events if event["type"] == "tool_call"] == [
+        "tool_call"
+    ]
+    assert [item["name"] for item in agent.session["history"] if item["role"] == "tool"] == [
+        "list_files"
+    ]
+    assert coordinator.calls == [
+        ("analyze_turn", "Inspect the auth implementation."),
+        ("prepare_specific", analysis),
+        ("finalize_prompt_context", ANY),
+    ]
+    assert build_contexts == [
+        coordinator.prepared_context,
+        coordinator.finalized_context,
+        coordinator.finalized_context,
+    ]
+
+    trace_events = [
+        json.loads(line)
+        for line in (agent.current_run_dir / "trace.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    prompt_built_events = [
+        event for event in trace_events if event["event"] == "prompt_built"
+    ]
+    assert len(prompt_built_events) == 3
+    map_context_summaries = [
+        event["prompt_metadata"]["map_context"] for event in prompt_built_events
+    ]
+    assert all(summary["section_rendered"] is True for summary in map_context_summaries)
+    assert all(summary["omission_reason"] is None for summary in map_context_summaries)
+    assert len({summary["section_rendered_hash"] for summary in map_context_summaries}) == 1
+    assert len({summary["section_rendered_chars"] for summary in map_context_summaries}) == 1
+    assert all(
+        event["prompt_metadata"]["active_repo_map_reservation_tokens"] > 0
+        and event["prompt_metadata"]["estimated_request_tokens"] > 0
+        and event["prompt_metadata"]["request_over_budget"] is False
+        for event in prompt_built_events
+    )
+    assert [event["event"] for event in trace_events].count("tool_executed") == 1
+    retry_event = next(
+        event for event in trace_events if event["event"] == "model_retry_scheduled"
+    )
+    assert retry_event["code"] == "empty_response"
+    assert retry_event["retry_count"] == 1
 
 
 def test_branch_a_preparation_failure_emits_trace_and_continues_without_map(tmp_path):
