@@ -9,7 +9,7 @@ from textual.binding import Binding
 from textual.css.query import NoMatches
 from textual.events import Key
 
-from ..cli import HELP_DETAILS, handle_repl_command
+from ..cli import HELP_DETAILS, REPORTER_EVENT_TYPES, handle_repl_command
 from .widgets import (
     AskUserPrompt,
     ChatLog,
@@ -209,6 +209,11 @@ class PicoTuiApp(App):
 
     def _handle_runtime_event(self, event: dict) -> None:
         event_type = str(event.get("type", ""))
+        if event_type in REPORTER_EVENT_TYPES:
+            self.query_one(ChatLog).add_message(
+                "assistant", str(event.get("content", ""))
+            )
+            return
         if event_type == "model_requested":
             attempts = event.get("attempts", 0)
             tool_steps = event.get("tool_steps", 0)

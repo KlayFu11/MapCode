@@ -437,3 +437,44 @@ async def test_tui_ask_user_prompt_returns_selected_choice(tmp_path):
         text = await wait_for_assistant(app, pilot, "User chose yes.")
 
         assert "User chose yes." in text
+
+
+@pytest.mark.asyncio
+async def test_tui_projects_reporter_events_before_final_answer(tmp_path):
+    from pico.tui.app import PicoTuiApp
+    from pico.tui.widgets import InputBar
+
+    reporter_events = [
+        {"type": "index_ready", "content": "index ready"},
+        {"type": "broad_ready", "content": "broad map ready"},
+        {"type": "map_context_ready", "content": "map context ready"},
+        {"type": "map_context_failed", "content": "map context failed"},
+    ]
+
+    class FakeEngine:
+        def drain_worker_notifications(self):
+            return []
+
+        def run_turn(self, user_message):
+            assert user_message == "inspect repository"
+            yield from reporter_events
+            yield {"type": "model_requested", "attempts": 1, "tool_steps": 0}
+            yield {"type": "final", "content": "final answer"}
+
+    agent = build_agent(tmp_path, [])
+    agent.engine = FakeEngine()
+    app = PicoTuiApp(agent)
+
+    async with app.run_test() as pilot:
+        bar = app.query_one(InputBar)
+        bar.input.value = "inspect repository"
+        await pilot.press("enter")
+        await wait_for_assistant(app, pilot, "final answer")
+
+        assert assistant_contents(app) == [
+            "index ready",
+            "broad map ready",
+            "map context ready",
+            "map context failed",
+            "final answer",
+        ]
