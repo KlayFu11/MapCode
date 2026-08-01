@@ -1,0 +1,67 @@
+{
+  "schema_version": "mapcode.retrieval-ground-truth.v1",
+  "fixture_revision": "v1",
+  "cases": [
+    {
+      "case_id": "jwt_auth_baseline",
+      "request": "fix token validation in JWTAuth",
+      "ground_truth_files": ["src/auth.py"],
+      "ground_truth_symbols": ["JWTAuth"],
+      "expected_branch": "specific"
+    },
+    {
+      "case_id": "file_specific_auth_py",
+      "request": "fix authentication in src/auth.py",
+      "ground_truth_files": ["src/auth.py"],
+      "ground_truth_symbols": [],
+      "expected_branch": "specific"
+    },
+    {
+      "case_id": "symbol_only_jwt_auth",
+      "request": "Explain JWTAuth.",
+      "ground_truth_files": ["src/auth.py"],
+      "ground_truth_symbols": ["JWTAuth"],
+      "expected_branch": "specific"
+    },
+    {
+      "case_id": "path_ident_only_pico",
+      "request": "Analyze PICO directory contents",
+      "ground_truth_files": ["pico/runtime.py", "pico/tools.py"],
+      "all_path_ident_hit_files": [
+        "pico/isolated.py",
+        "pico/runtime.py",
+        "pico/tools.py"
+      ],
+      "original_path_ident": "PICO",
+      "expected_branch": "specific",
+      "expected_focus_fnames": []
+    },
+    {
+      "case_id": "fuzzy_no_signal",
+      "request": "Explain the deployment story.",
+      "ground_truth_files": [],
+      "expected_branch": "fuzzy"
+    },
+    {
+      "case_id": "selector_catalog_visibility",
+      "request": "Explain the cross-module authentication flow.",
+      "ground_truth_files": ["src/auth.py"],
+      "preferred_source_path": "src/auth.py",
+      "test_path": "tests/test_auth.py",
+      "candidate_only_path": "src/zz_hidden_adapter.py",
+      "expected_branch": "fuzzy"
+    },
+    {
+      "case_id": "selector_request_over_budget",
+      "request": "Select files for a bounded authentication change.",
+      "ground_truth_files": ["src/auth.py"],
+      "expected_fallback_reason": "selector_request_over_budget"
+    },
+    {
+      "case_id": "selector_failure",
+      "request": "Select files for an unknown integration issue.",
+      "ground_truth_files": [],
+      "expected_fallback_reason": "selector_no_valid_files"
+    }
+  ]
+}
