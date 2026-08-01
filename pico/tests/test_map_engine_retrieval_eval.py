@@ -10,6 +10,7 @@ import pytest
 
 from pico.core.map_selector import build_selector_request
 from pico.core.map_selector import parse_selector_output
+from pico.evaluation.retrieval_metrics import collect_retrieval_case_metrics
 from pico.features.map_engine import selector_catalog
 from pico.features.map_engine.engine import MapEngine
 from pico.features.map_engine.source_files import list_python_source_files
@@ -214,3 +215,215 @@ def test_selector_visible_paths_reject_hidden_catalog_candidates(
     assert "Prefer implementation/source files over test files" in request.system_prompt
     assert parsed.suggested_files == (source_path,)
     assert parsed.invalid_files == (test_path, hidden_path)
+
+
+def test_retrieval_metrics_projects_path_ident_branch_a_evidence(
+    ground_truth: dict[str, object],
+):
+    case = _case(ground_truth, "path_ident_only_pico")
+    evidence = {
+        "analysis": {
+            "branch": "specific",
+            "mentioned_files": [],
+            "effective_symbol_hits": [],
+            "path_ident_hits": ["PICO"],
+            "path_ident_hit_files": {
+                "PICO": [
+                    "pico/isolated.py",
+                    "pico/runtime.py",
+                    "pico/tools.py",
+                ]
+            },
+        },
+        "active_result": {
+            "mode": "focused",
+            "focus_fnames": [],
+            "rendered_files": ["pico/runtime.py", "pico/tools.py"],
+            "evidence": {
+                "ranking": {
+                    "focus_personalization_files": [],
+                    "path_personalization_files": [
+                        "pico/runtime.py",
+                        "pico/tools.py",
+                    ],
+                    "personalization_files": [
+                        "pico/runtime.py",
+                        "pico/tools.py",
+                    ],
+                },
+                "rendering": {
+                    "target_tokens": 4096,
+                    "target_chars": 16384,
+                    "used_chars": 112,
+                    "estimated_tokens": 28,
+                    "focus_truncated": False,
+                },
+                "rendered_files": [
+                    {
+                        "path": "pico/runtime.py",
+                        "top_rank_contributors": [
+                            {
+                                "source_path": "pico/tools.py",
+                                "identifier": "PICO",
+                                "weight_multiplier": 75.0,
+                                "weight_reason_codes": ["prompt_ident_boost"],
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+    }
+    trace_events = [
+        {"event": "tool_executed", "name": "list_files", "args": {"path": "."}},
+        {"event": "tool_executed", "name": "read_file", "args": {"path": "pico/runtime.py"}},
+        {"event": "tool_executed", "name": "read_file", "args": {"path": "pico/isolated.py"}},
+    ]
+
+    metrics = collect_retrieval_case_metrics(case, evidence, trace_events)
+
+    assert metrics.effective_file_hit is None
+    assert metrics.effective_symbol_hit is None
+    assert metrics.effective_path_ident_hit is True
+    assert metrics.path_ident_branch_a is True
+    assert metrics.path_ident_raw_ident == "PICO"
+    assert metrics.path_ident_full_hit_files == (
+        "pico/isolated.py",
+        "pico/runtime.py",
+        "pico/tools.py",
+    )
+    assert metrics.focus_files == ()
+    assert metrics.focus_personalization_files == ()
+    assert metrics.path_personalization_files == (
+        "pico/runtime.py",
+        "pico/tools.py",
+    )
+    assert metrics.personalization_files == metrics.path_personalization_files
+    assert metrics.path_ground_truth_personalization_hit is True
+    assert metrics.path_ground_truth_rendered_hit is True
+    assert metrics.focus_path_isolated is True
+    assert metrics.rendered_files == ("pico/runtime.py", "pico/tools.py")
+    assert metrics.rendered_file_hit is True
+    assert metrics.first_read_path == "pico/runtime.py"
+    assert metrics.first_read_hit is True
+    assert metrics.focused_rendering is not None
+    assert metrics.focused_rendering.target_tokens == 4096
+    assert metrics.focused_rendering.target_chars == 16384
+    assert metrics.focused_rendering.used_chars == 112
+    assert metrics.focused_rendering.estimated_tokens == 28
+    assert metrics.focused_rendering.focus_truncated is False
+    assert metrics.broad_rendering is None
+    assert metrics.top_contributors[0].weight_multiplier == 75.0
+    assert metrics.top_contributors[0].reason_codes == ("prompt_ident_boost",)
+
+
+def test_retrieval_metrics_distinguishes_hits_misses_and_broad_rendering(
+    ground_truth: dict[str, object],
+):
+    file_case = _case(ground_truth, "file_specific_auth_py")
+    symbol_case = _case(ground_truth, "symbol_only_jwt_auth")
+    file_evidence = {
+        "analysis": {
+            "branch": "specific",
+            "mentioned_files": ["src/auth.py"],
+            "effective_symbol_hits": [],
+            "path_ident_hits": [],
+            "path_ident_hit_files": {},
+        },
+        "active_result": {
+            "mode": "focused",
+            "focus_fnames": ["src/auth.py"],
+            "rendered_files": ["src/auth.py"],
+            "evidence": {
+                "ranking": {
+                    "focus_personalization_files": ["src/auth.py"],
+                    "path_personalization_files": [],
+                    "personalization_files": ["src/auth.py"],
+                },
+                "rendering": {
+                    "target_tokens": 4096,
+                    "target_chars": 16384,
+                    "used_chars": 40,
+                    "estimated_tokens": 10,
+                    "focus_truncated": False,
+                },
+            },
+        },
+    }
+    symbol_evidence = {
+        "analysis": {
+            "branch": "specific",
+            "mentioned_files": [],
+            "effective_symbol_hits": ["OtherAuth"],
+            "path_ident_hits": [],
+            "path_ident_hit_files": {},
+        },
+        "active_result": {
+            "mode": "focused",
+            "focus_fnames": [],
+            "rendered_files": ["src/other.py"],
+            "evidence": {"ranking": {}},
+        },
+        "broad_result": {
+            "mode": "broad",
+            "rendered_files": ["src/auth.py"],
+            "evidence": {
+                "rendering": {
+                    "target_tokens": 8192,
+                    "target_chars": 32768,
+                    "used_chars": 80,
+                    "estimated_tokens": 20,
+                    "focus_truncated": False,
+                }
+            },
+        },
+    }
+
+    file_metrics = collect_retrieval_case_metrics(
+        file_case,
+        file_evidence,
+        [{"event": "tool_executed", "name": "read_file", "args": {"path": "src/auth.py"}}],
+    )
+    symbol_metrics = collect_retrieval_case_metrics(
+        symbol_case,
+        symbol_evidence,
+        [{"event": "tool_executed", "name": "read_file", "args": {"path": "src/other.py"}}],
+    )
+
+    assert file_metrics.effective_file_hit is True
+    assert file_metrics.effective_symbol_hit is None
+    assert file_metrics.rendered_file_hit is True
+    assert file_metrics.first_read_hit is True
+    assert symbol_metrics.effective_file_hit is None
+    assert symbol_metrics.effective_symbol_hit is False
+    assert symbol_metrics.rendered_file_hit is False
+    assert symbol_metrics.first_read_hit is False
+    assert symbol_metrics.focused_rendering is None
+    assert symbol_metrics.broad_rendering is not None
+    assert symbol_metrics.broad_rendering.target_tokens == 8192
+    assert symbol_metrics.broad_rendering.target_chars == 32768
+    assert symbol_metrics.broad_rendering.used_chars == 80
+    assert symbol_metrics.broad_rendering.estimated_tokens == 20
+    assert symbol_metrics.broad_rendering.focus_truncated is False
+
+
+def test_retrieval_metrics_preserves_missing_and_not_applicable_semantics(
+    ground_truth: dict[str, object],
+):
+    case = _case(ground_truth, "path_ident_only_pico")
+    missing = collect_retrieval_case_metrics(case, None, [])
+
+    assert missing.effective_file_hit is None
+    assert missing.effective_symbol_hit is None
+    assert missing.effective_path_ident_hit is None
+    assert missing.path_ident_branch_a is None
+    assert missing.path_ident_full_hit_files == ()
+    assert missing.focus_files == ()
+    assert missing.path_personalization_files == ()
+    assert missing.rendered_files == ()
+    assert missing.rendered_file_hit is None
+    assert missing.first_read_path is None
+    assert missing.first_read_hit is None
+    assert missing.focused_rendering is None
+    assert missing.broad_rendering is None
+    assert missing.top_contributors == ()

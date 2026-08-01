@@ -117,7 +117,7 @@
 ## 阶段 9：Retrieval Eval 与发布验收
 
 - [x] V1-F9-01 建立固定 retrieval fixture 和 ground truth (P0, 依赖 V1-F8-07)
-- [ ] V1-F9-02 实现 effective-hit、rendered-file、first-read 与 map budget 指标 (P0, 依赖 V1-F9-01)
+- [x] V1-F9-02 实现 effective-hit、rendered-file、first-read 与 map budget 指标 (P0, 依赖 V1-F9-01)
 - [ ] V1-F9-03 实现完整 selector request 与 catalog truncation 指标 (P0, 依赖 V1-F9-02)
 - [ ] V1-F9-04 实现 fallback、reduction、omission 与超预算指标 (P0, 依赖 V1-F9-03)
 - [ ] V1-F9-05 接入 Pico evaluator (P0, 依赖 V1-F9-04)
