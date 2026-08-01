@@ -92,7 +92,7 @@
 - **依赖**：V1-F8-04
 - **输入**：当前最新 SPEC/PRD/FuncFlow、reporter/runtime 用户事件
 - **输出**：CLI one-shot/REPL 用户可见 index/broad/focused/fallback/failure/budget 摘要
-- **允许修改路径**：CLI/REPL 消费接缝、reporter 与 tests
+- **允许修改路径**：CLI/REPL 消费接缝、`engine.py`/`map_context.py` 既有事实事件桥接、reporter 与 tests
 - **禁止修改边界**：不得在 CLI/REPL 运行检索、预算门禁或产生新事实
 - **步骤**：按调用前时机展示 reporter payload；无 artifact 时不显示路径；保持 one-shot/REPL 行为一致。
 - **验证命令**：

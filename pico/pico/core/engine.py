@@ -172,8 +172,11 @@ class Engine:
                     )
                     map_context_finalized = True
                 except Exception as exc:
-                    self._discard_map_context(task_state, exc)
+                    yield self._discard_map_context(task_state, exc)
                 else:
+                    ready_event = self._map_context_ready_event(task_state)
+                    if ready_event is not None:
+                        yield ready_event
                     agent.current_map_context = None
                 prompt_build_result = agent._build_prompt_and_metadata(
                     user_message, purpose="main_model"
@@ -193,10 +196,14 @@ class Engine:
                     )
                     map_context_finalized = True
                 except Exception as exc:
-                    self._discard_map_context(task_state, exc)
+                    yield self._discard_map_context(task_state, exc)
                     prompt_build_result = agent._build_prompt_and_metadata(
                         user_message, purpose="main_model"
                     )
+                else:
+                    ready_event = self._map_context_ready_event(task_state)
+                    if ready_event is not None:
+                        yield ready_event
             prompt = prompt_build_result.prompt
             prompt_metadata = dict(prompt_build_result.metadata)
             if omitted_map_metadata:
@@ -554,6 +561,12 @@ class Engine:
 
         try:
             analysis = coordinator.analyze_turn(task_state, user_message)
+            map_engine = getattr(coordinator, "map_engine", None)
+            if map_engine is not None:
+                index_report = MapEngineConsoleReporter().render_index_status(
+                    map_engine.ensure_index()
+                )
+                yield self._report_event(task_state, "index_ready", index_report)
             has_branch_a_signal = any(
                 (
                     analysis.mentioned_files,
@@ -637,7 +650,7 @@ class Engine:
                     task_state, broad_result, decision
                 )
         except Exception as exc:
-            self._discard_map_context(task_state, exc)
+            yield self._discard_map_context(task_state, exc)
 
     def _can_confirm_focus(self):
         return callable(getattr(self.runtime, "ask_user_callback", None))
@@ -648,12 +661,22 @@ class Engine:
             branch="fuzzy",
             stage="execution",
         )
+        return self._report_event(task_state, "broad_ready", report)
+
+    def _report_event(self, task_state, event_type, report):
         return {
-            "type": "broad_ready",
+            "type": event_type,
             "run_id": task_state.run_id,
             "content": report.to_text(),
             "payload": dict(report.payload),
         }
+
+    def _map_context_ready_event(self, task_state):
+        context = self.runtime.current_map_context
+        if not hasattr(getattr(context, "active_result", None), "evidence"):
+            return None
+        report = MapEngineConsoleReporter().render_context(context)
+        return self._report_event(task_state, "map_context_ready", report)
 
     def _discard_map_context(self, task_state, exc):
         agent = self.runtime
@@ -667,3 +690,8 @@ class Engine:
                 "fallback": "without_repo_map",
             },
         )
+        report = MapEngineConsoleReporter().render_failure(
+            error_type=type(exc).__name__,
+            fallback="without_repo_map",
+        )
+        return self._report_event(task_state, "map_context_failed", report)

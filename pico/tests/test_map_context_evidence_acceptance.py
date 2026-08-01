@@ -460,3 +460,44 @@ def test_fuzzy_one_shot_fallback_evidence_reuses_the_broad_result(tmp_path):
     }
     assert "repo_map_text" not in json.dumps(evidence, sort_keys=True)
     assert "evidence_artifact_path" not in evidence
+
+
+def test_runtime_reporter_events_precede_the_main_model_and_hide_when_disabled(
+    tmp_path,
+):
+    agent = _runtime(tmp_path)
+
+    events = list(agent.engine.run_turn("Inspect src/auth.py."))
+    event_types = [event["type"] for event in events]
+    assert event_types.index("index_ready") < event_types.index("map_context_ready")
+    assert event_types.index("map_context_ready") < event_types.index("model_requested")
+    ready_event = next(event for event in events if event["type"] == "map_context_ready")
+    assert ready_event["payload"]["evidence_artifact_path"].endswith(
+        "map-evidence-001.json"
+    )
+
+    agent.feature_flags["map_engine"] = False
+    disabled_events = list(agent.engine.run_turn("Inspect src/auth.py."))
+    assert not {
+        "index_ready",
+        "broad_ready",
+        "map_context_ready",
+        "map_context_failed",
+    }.intersection(event["type"] for event in disabled_events)
+
+
+def test_runtime_emits_reporter_failure_from_existing_map_context_error(tmp_path):
+    agent = _runtime(tmp_path)
+
+    class FailingCoordinator:
+        def analyze_turn(self, _task_state, _user_message):
+            raise OSError("index storage unavailable")
+
+    agent.map_context_coordinator = FailingCoordinator()
+    events = list(agent.engine.run_turn("Inspect src/auth.py."))
+
+    failure = next(event for event in events if event["type"] == "map_context_failed")
+    assert failure["payload"] == {
+        "error_type": "OSError",
+        "fallback": "without_repo_map",
+    }

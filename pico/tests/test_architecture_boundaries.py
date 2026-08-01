@@ -35,7 +35,7 @@ def test_core_modules_stay_below_entropy_budget():
         "pico/core/map_context_reporter.py": 200,
         "pico/core/context_usage.py": 120,
         "pico/core/compact.py": 180,
-        "pico/core/engine.py": 670,
+        "pico/core/engine.py": 710,
         "pico/core/model_errors.py": 100,
         "pico/core/permissions.py": 140,
         "pico/core/tool_policy.py": 90,

@@ -70,6 +70,9 @@ HELP_DETAILS = (
 DEFAULT_OPENAI_MODEL = PROVIDER_DEFAULTS["openai"]["model"]
 DEFAULT_OPENAI_BASE_URL = PROVIDER_DEFAULTS["openai"]["base_url"]
 SECRET_ENV_NAMES_VAR = "PICO_SECRET_ENV_NAMES"
+REPORTER_EVENT_TYPES = frozenset(
+    {"index_ready", "broad_ready", "map_context_ready", "map_context_failed"}
+)
 
 
 def _configured_secret_names(args):
@@ -638,6 +641,18 @@ def _drain_idle_worker_notifications(agent):
     return notifications
 
 
+def consume_turn_events(agent, user_message, *, output=print):
+    """Print runtime-owned MapEngine reports while preserving the terminal answer."""
+    terminal_content = ""
+    for event in agent.engine.run_turn(user_message):
+        event_type = event["type"]
+        if event_type in REPORTER_EVENT_TYPES:
+            output(event["content"])
+        elif event_type in {"final", "stop"}:
+            terminal_content = event["content"]
+    return terminal_content
+
+
 def interaction_mode(args):
     if args.prompt:
         return "one_shot"
@@ -680,7 +695,7 @@ def main(argv=None):
             print()
             try:
                 handled, _, output = handle_repl_command(agent, prompt)
-                print(output if handled else agent.ask(prompt))
+                print(output if handled else consume_turn_events(agent, prompt))
             except RuntimeError as exc:
                 print(str(exc), file=sys.stderr)
                 return 1
@@ -707,6 +722,6 @@ def main(argv=None):
 
         print()
         try:
-            print(agent.ask(user_input))
+            print(consume_turn_events(agent, user_input))
         except RuntimeError as exc:
             print(str(exc), file=sys.stderr)

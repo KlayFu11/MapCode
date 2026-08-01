@@ -5,9 +5,11 @@ import subprocess
 import sys
 import urllib.error
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pico as pico_pkg
+import pico.cli as pico_cli
 import pico.providers as providers_pkg
 import pytest
 from pico.testing import ScriptedModelClient
@@ -38,6 +40,55 @@ def build_agent(tmp_path, outputs, **kwargs):
         approval_policy=approval_policy,
         **kwargs,
     )
+
+
+class _ReporterEventEngine:
+    def drain_worker_notifications(self):
+        return []
+
+    def run_turn(self, _user_message):
+        yield {"type": "turn_started"}
+        yield {"type": "index_ready", "content": "index report"}
+        yield {"type": "broad_ready", "content": "broad report"}
+        yield {"type": "map_context_ready", "content": "context report"}
+        yield {"type": "model_requested"}
+        yield {"type": "final", "content": "final answer"}
+
+
+def _reporter_event_agent():
+    return SimpleNamespace(
+        engine=_ReporterEventEngine(),
+        model_client=SimpleNamespace(model="test-model", base_url="https://example.test"),
+    )
+
+
+def test_cli_one_shot_and_repl_consume_the_same_reporter_event_seam(
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setattr(pico_cli, "build_agent", lambda _args: _reporter_event_agent())
+    monkeypatch.setattr(pico_cli, "build_welcome", lambda *_args, **_kwargs: "WELCOME")
+
+    assert pico_cli.main(["Inspect", "the", "map"]) == 0
+    one_shot_output = capsys.readouterr().out
+    assert one_shot_output.index("index report") < one_shot_output.index("final answer")
+    assert "broad report" in one_shot_output
+    assert "context report" in one_shot_output
+
+    repl_inputs = iter(("Inspect the map",))
+
+    def read_repl_input(_prompt):
+        try:
+            return next(repl_inputs)
+        except StopIteration as exc:
+            raise EOFError from exc
+
+    monkeypatch.setattr("builtins.input", read_repl_input)
+    assert pico_cli.main(["--repl"]) == 0
+    repl_output = capsys.readouterr().out
+    assert repl_output.index("index report") < repl_output.index("final answer")
+    assert "broad report" in repl_output
+    assert "context report" in repl_output
 
 
 def test_agent_runs_tool_then_final(tmp_path):

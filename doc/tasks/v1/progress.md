@@ -7,7 +7,7 @@
 
 - `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F8-05 CLI/REPL 展示 reporter 事件`
+- 下一可执行任务：`V1-F8-06 TUI 展示 reporter 事件`
 
 ## 阶段 0：固定施工地基
 
@@ -110,7 +110,7 @@
 - [x] V1-F8-02 保证 repo-map artifact 与首次实际注入一致 (P0, 依赖 V1-F8-01)
 - [x] V1-F8-03 写入结构化 map evidence artifact (P0, 依赖 V1-F8-02)
 - [x] V1-F8-04 report 增加 MapContext、预算与模型调用摘要 (P0, 依赖 V1-F8-03)
-- [ ] V1-F8-05 CLI/REPL 展示 reporter 事件 (P1, 依赖 V1-F8-04)
+- [x] V1-F8-05 CLI/REPL 展示 reporter 事件 (P1, 依赖 V1-F8-04)
 - [ ] V1-F8-06 TUI 展示 reporter 事件 (P1, 依赖 V1-F8-05)
 - [ ] V1-F8-07 增加证据一致性、redaction 和降级测试 (P0, 依赖 V1-F8-04)
 
