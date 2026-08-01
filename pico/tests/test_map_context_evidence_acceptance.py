@@ -1,9 +1,12 @@
 import json
+import os
 import subprocess
 from dataclasses import replace
+from unittest.mock import patch
 
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.core.map_context_prompt import REPO_MAP_NAVIGATION_CONTRACT, RepoMapSectionRender
+from pico.core.run_store import RunStore
 from pico.testing import ScriptedModelClient
 
 
@@ -17,7 +20,7 @@ def _git(repo, *args):
     )
 
 
-def _runtime(tmp_path):
+def _runtime(tmp_path, run_store=None):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "auth.py").write_text(
         "class AuthService:\n    pass\n",
@@ -38,6 +41,7 @@ def _runtime(tmp_path):
         ),
         workspace=WorkspaceContext.build(tmp_path),
         session_store=SessionStore(tmp_path / ".pico" / "sessions"),
+        run_store=run_store,
         approval_policy="auto",
         feature_flags={"map_engine": True},
     )
@@ -501,3 +505,39 @@ def test_runtime_emits_reporter_failure_from_existing_map_context_error(tmp_path
         "error_type": "OSError",
         "fallback": "without_repo_map",
     }
+
+
+def test_map_context_run_redacts_secret_from_all_persisted_evidence_layers(
+    tmp_path,
+):
+    secret = "mapcode-evidence-secret-123"
+    with patch.dict(os.environ, {"OPENAI_API_KEY": secret}, clear=False):
+        run_store = RunStore(tmp_path / ".pico" / "runs")
+        agent = _runtime(tmp_path, run_store=run_store)
+        agent.model_client = ScriptedModelClient(["<final>Done.</final>"])
+        events = list(
+            agent.engine.run_turn(
+                f"Inspect src/auth.py using token {secret}."
+            )
+        )
+
+    assert run_store.redactor == agent.redact_artifact
+    run_dir = agent.current_run_dir
+    persisted_texts = {
+        "trace": (run_dir / "trace.jsonl").read_text(encoding="utf-8"),
+        "task_state": (run_dir / "task_state.json").read_text(encoding="utf-8"),
+        "report": (run_dir / "report.json").read_text(encoding="utf-8"),
+        "repo_map": (run_dir / "artifacts" / "repo-map-001.txt").read_text(
+            encoding="utf-8"
+        ),
+        "map_evidence": (
+            run_dir / "artifacts" / "map-evidence-001.json"
+        ).read_text(encoding="utf-8"),
+        "reporter": json.dumps(events, sort_keys=True),
+    }
+
+    assert all(secret not in text for text in persisted_texts.values())
+    assert "<redacted>" in persisted_texts["trace"]
+    assert "<redacted>" in persisted_texts["task_state"]
+    assert "<redacted>" in persisted_texts["report"]
+    assert any(secret in prompt for prompt in agent.model_client.prompts)

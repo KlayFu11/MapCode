@@ -16,9 +16,18 @@ def _run_id(value):
 
 
 class RunStore:
-    def __init__(self, root):
+    def __init__(self, root, redactor=None):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self.redactor = redactor
+
+    def set_redactor(self, redactor):
+        self.redactor = redactor
+
+    def _redact(self, value):
+        if self.redactor is None:
+            return value
+        return self.redactor(value)
 
     def run_dir(self, run_id):
         return self.root / _run_id(run_id)
@@ -46,7 +55,7 @@ class RunStore:
     def write_task_state(self, task_state):
         path = self.task_state_path(task_state)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._write_json_atomic(path, task_state.to_dict())
+        self._write_json_atomic(path, self._redact(task_state.to_dict()))
         return path
 
     def append_trace(self, task_state, event):
@@ -55,7 +64,9 @@ class RunStore:
         # trace 采用 jsonl 追加写入，原因是 agent 运行过程是流式事件序列，
         # 逐条落盘比“最后一次性写整份 trace”更稳，也更适合调试。
         with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event, sort_keys=True, ensure_ascii=True))
+            handle.write(
+                json.dumps(self._redact(event), sort_keys=True, ensure_ascii=True)
+            )
             handle.write("\n")
         return path
 
@@ -64,7 +75,7 @@ class RunStore:
         directory.mkdir(parents=True, exist_ok=True)
         index = len(list(directory.glob(f"{stem}-*.txt"))) + 1
         path = directory / f"{stem}-{index:03d}.txt"
-        path.write_text(str(content), encoding="utf-8")
+        path.write_text(str(self._redact(content)), encoding="utf-8")
         return path
 
     def write_json_artifact(self, task_state, stem, payload):
@@ -72,13 +83,13 @@ class RunStore:
         directory.mkdir(parents=True, exist_ok=True)
         index = len(list(directory.glob(f"{stem}-*.json"))) + 1
         path = directory / f"{stem}-{index:03d}.json"
-        self._write_json_atomic(path, payload)
+        self._write_json_atomic(path, self._redact(payload))
         return path
 
     def write_report(self, task_state, report):
         path = self.report_path(task_state)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._write_json_atomic(path, report)
+        self._write_json_atomic(path, self._redact(report))
         return path
 
     def load_task_state(self, task_id):

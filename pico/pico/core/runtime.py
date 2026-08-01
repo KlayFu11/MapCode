@@ -175,6 +175,7 @@ class Pico(RuntimeSecretsMixin, RuntimeCheckpointsMixin):
         self.run_store = run_store or RunStore(
             Path(workspace.repo_root) / ".pico" / "runs"
         )
+        self.run_store.set_redactor(self.redact_artifact)
         self.session = session or {
             "id": datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6],
             "created_at": now(),
