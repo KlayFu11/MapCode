@@ -121,7 +121,7 @@
 - [x] V1-F9-03 实现完整 selector request 与 catalog truncation 指标 (P0, 依赖 V1-F9-02)
 - [x] V1-F9-04 实现 fallback、reduction、omission 与超预算指标 (P0, 依赖 V1-F9-03)
 - [x] V1-F9-05 接入 Pico evaluator (P0, 依赖 V1-F9-04)
-- [ ] V1-F9-06 运行完整离线回归和架构边界检查 (P0, 依赖 V1-F9-05)
+- [x] V1-F9-06 运行完整离线回归和架构边界检查 (P0, 依赖 V1-F9-05)
 - [ ] V1-F9-07 使用真实 provider 演示 Branch A 与 path-ident-only (P0, 依赖 V1-F9-06)
 - [ ] V1-F9-08 使用真实 provider 演示 Branch B 和预算降级 (P0, 依赖 V1-F9-07)
 - [ ] V1-F9-09 更新 README、配置、演示步骤和项目总进度 (P0, 依赖 V1-F9-08/V1-F8-06)
