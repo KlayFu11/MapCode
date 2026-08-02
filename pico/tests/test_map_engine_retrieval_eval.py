@@ -101,7 +101,7 @@ def test_ground_truth_cases_are_static_and_cover_required_retrieval_inputs(
     assert file_specific_case["expected_branch"] == "specific"
     catalog_case = _case(ground_truth, "selector_catalog_visibility")
     assert catalog_case["preferred_source_path"] == "src/auth.py"
-    assert catalog_case["test_path"] == "tests/test_auth.py"
+    assert catalog_case["test_path"] == "tests/auth.py"
     assert catalog_case["candidate_only_path"] == "src/zz_hidden_adapter.py"
 
 

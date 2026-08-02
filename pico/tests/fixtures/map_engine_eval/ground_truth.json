@@ -47,7 +47,7 @@
       "request": "Explain the cross-module authentication flow.",
       "ground_truth_files": ["src/auth.py"],
       "preferred_source_path": "src/auth.py",
-      "test_path": "tests/test_auth.py",
+      "test_path": "tests/auth.py",
       "candidate_only_path": "src/zz_hidden_adapter.py",
       "expected_branch": "fuzzy"
     },
