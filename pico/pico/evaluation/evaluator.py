@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,6 +16,11 @@ from ..core.runtime import Pico, SessionStore
 from ..core.run_store import RunStore
 from ..core.task_state import STOP_REASON_FINAL_ANSWER_RETURNED
 from ..core.workspace import WorkspaceContext
+from ..core.model_request_budget import (
+    MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+    ModelRequestBudget,
+)
+from .retrieval_metrics import collect_retrieval_case_metrics
 
 BENCHMARK_SCHEMA_VERSION = 1
 DEFAULT_BENCHMARK_PATH = Path("benchmarks/coding_tasks.json")
@@ -26,6 +32,10 @@ DEFAULT_TEMPERATURE = 0.0
 DEFAULT_TOP_P = 1.0
 DEFAULT_MAX_NEW_TOKENS = 64
 DEFAULT_TIMEZONE = "Asia/Shanghai"
+FIXED_RETRIEVAL_EVAL_SCHEMA_VERSION = "mapcode.fixed-retrieval-eval.v1"
+FIXED_RETRIEVAL_FIXTURE_ROOT = (
+    Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "map_engine_eval"
+)
 
 REQUIRED_BENCHMARK_KEYS = ("schema_version", "tasks")
 REQUIRED_TASK_KEYS = (
@@ -632,3 +642,178 @@ def run_harness_regression_v2(
         timezone_name=timezone_name,
         model_client_factory=model_client_factory,
     )
+
+
+def run_fixed_retrieval_eval(artifact_path):
+    """Run the fixed MapEngine retrieval corpus through the real Pico runtime.
+
+    The fixture is copied into a fresh Git repository for every case so the
+    runtime's Git-backed source discovery and emitted run artifacts are the
+    evidence source.  This intentionally does not share BenchmarkEvaluator's
+    coding-task contract.
+    """
+
+    artifact_path = Path(artifact_path)
+    ground_truth = json.loads(
+        (FIXED_RETRIEVAL_FIXTURE_ROOT / "ground_truth.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    cases = list(ground_truth["cases"])
+    with tempfile.TemporaryDirectory(prefix="pico-fixed-retrieval-") as temp_dir:
+        workspace_root = Path(temp_dir)
+        rows = [
+            _run_fixed_retrieval_case(workspace_root, case)
+            for case in cases
+        ]
+
+    from .metrics import aggregate_retrieval_eval_cases
+
+    default_budget = _fixed_retrieval_default_budget()
+    artifact = {
+        "schema_version": FIXED_RETRIEVAL_EVAL_SCHEMA_VERSION,
+        "artifact_type": "fixed-retrieval-eval",
+        "reproducibility": {
+            "fixture": {
+                "path": "tests/fixtures/map_engine_eval",
+                "revision": str(ground_truth["fixture_revision"]),
+                "snapshot_id": _fixture_snapshot_id([FIXED_RETRIEVAL_FIXTURE_ROOT]),
+            },
+            "model": {
+                "name": DEFAULT_MODEL_NAME,
+                "version": DEFAULT_MODEL_VERSION,
+            },
+            "model_request_budget": _model_request_budget_payload(default_budget),
+            "execution_budgets": {"max_steps": 1, "max_new_tokens": DEFAULT_MAX_NEW_TOKENS},
+        },
+        "cases": rows,
+        "aggregate": aggregate_retrieval_eval_cases(rows),
+    }
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return artifact
+
+
+def _run_fixed_retrieval_case(workspace_root, case):
+    case = dict(case)
+    fixture_root = Path(workspace_root) / str(case["case_id"])
+    shutil.copytree(FIXED_RETRIEVAL_FIXTURE_ROOT, fixture_root)
+    _initialize_fixed_retrieval_fixture_git(fixture_root)
+    fixture_git_clean = _git_value(["status", "--porcelain"], cwd=fixture_root) == ""
+
+    model_client = ScriptedModelClient(_fixed_retrieval_outputs(case))
+    request_budget = _fixed_retrieval_request_budget(case)
+    agent = Pico(
+        model_client=model_client,
+        workspace=WorkspaceContext.build(fixture_root, repo_root_override=fixture_root),
+        session_store=SessionStore(fixture_root / ".pico" / "sessions"),
+        run_store=RunStore(fixture_root / ".pico" / "runs"),
+        approval_policy="auto",
+        max_steps=1,
+        max_new_tokens=DEFAULT_MAX_NEW_TOKENS,
+        feature_flags={"map_engine": True},
+        ask_user_callback=_fixed_retrieval_confirmation(case),
+        model_request_budget=request_budget,
+    )
+    agent.ask(str(case["request"]))
+    task_state = agent.current_task_state
+    report = agent.run_store.load_report(task_state.run_id)
+    trace_path = agent.run_store.trace_path(task_state.run_id)
+    trace_events = [
+        json.loads(line)
+        for line in trace_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    map_evidence_path = str(report["map_context"]["evidence_artifact_path"])
+    map_evidence = json.loads((fixture_root / map_evidence_path).read_text(encoding="utf-8"))
+    metrics = collect_retrieval_case_metrics(case, map_evidence, trace_events, report)
+    return {
+        "case_id": str(case["case_id"]),
+        "request": str(case["request"]),
+        "fixture": {
+            "revision": str(case.get("fixture_revision", "v1")),
+            "git_clean": fixture_git_clean,
+        },
+        "execution": {
+            "max_steps": 1,
+            "max_new_tokens": DEFAULT_MAX_NEW_TOKENS,
+            "model_request_budget": _model_request_budget_payload(request_budget),
+        },
+        "sources": {
+            "map_evidence": "run_artifact",
+            "trace": "run_artifact",
+            "report": "run_artifact",
+        },
+        "metrics": json.loads(json.dumps(asdict(metrics))),
+    }
+
+
+def _initialize_fixed_retrieval_fixture_git(fixture_root):
+    for args in (
+        ("init", "-q"),
+        ("config", "user.email", "mapcode@example.test"),
+        ("config", "user.name", "MapCode Retrieval Eval"),
+        ("add", "."),
+        ("commit", "-q", "-m", "fixed retrieval fixture"),
+    ):
+        subprocess.run(["git", *args], cwd=fixture_root, check=True, timeout=5)
+
+
+def _fixed_retrieval_outputs(case):
+    case_id = str(case["case_id"])
+    if case_id == "selector_catalog_visibility":
+        return [
+            '{"suggested_files":["src/auth.py"],"reasoning":"fixed eval"}',
+            "<final>Done.</final>",
+        ]
+    if case_id == "selector_failure":
+        return [
+            '{"suggested_files":["src/zz_hidden_adapter.py"],"reasoning":"hidden"}',
+            "<final>Done.</final>",
+        ]
+    return ["<final>Done.</final>"]
+
+
+def _fixed_retrieval_confirmation(case):
+    if str(case["case_id"]) == "selector_catalog_visibility":
+        return lambda _question, _choices: "接受全部建议"
+    if str(case["case_id"]) in {"selector_failure", "selector_request_over_budget"}:
+        return lambda _question, _choices: "使用 broad map"
+    return None
+
+
+def _fixed_retrieval_default_budget():
+    return ModelRequestBudget(
+        provider="runtime",
+        model="",
+        model_input_budget_tokens=32768,
+        prompt_safety_margin_tokens=1024,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="fallback",
+    )
+
+
+def _fixed_retrieval_request_budget(case):
+    if str(case["case_id"]) != "selector_request_over_budget":
+        return _fixed_retrieval_default_budget()
+    return ModelRequestBudget(
+        provider="fixed-retrieval-eval",
+        model="ScriptedModelClient",
+        model_input_budget_tokens=512,
+        prompt_safety_margin_tokens=0,
+        estimation_method=MODEL_REQUEST_TOKEN_ESTIMATION_METHOD,
+        source="explicit",
+    )
+
+
+def _model_request_budget_payload(budget):
+    return {
+        "provider": budget.provider,
+        "model": budget.model,
+        "model_input_budget_tokens": budget.model_input_budget_tokens,
+        "prompt_safety_margin_tokens": budget.prompt_safety_margin_tokens,
+        "estimation_method": budget.estimation_method,
+        "source": budget.source,
+    }

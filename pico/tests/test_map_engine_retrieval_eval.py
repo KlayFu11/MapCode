@@ -10,6 +10,7 @@ import pytest
 
 from pico.core.map_selector import build_selector_request
 from pico.core.map_selector import parse_selector_output
+from pico.evaluation.evaluator import run_fixed_retrieval_eval
 from pico.evaluation.retrieval_metrics import collect_retrieval_case_metrics
 from pico.features.map_engine import selector_catalog
 from pico.features.map_engine.engine import MapEngine
@@ -580,3 +581,50 @@ def test_retrieval_metrics_preserves_missing_and_not_applicable_semantics(
     assert missing.selector_request is None
     assert missing.fallback_budget is None
     assert missing.top_contributors == ()
+
+
+def test_run_fixed_retrieval_eval_writes_ordered_runtime_evidence_artifact(
+    tmp_path: Path,
+):
+    artifact_path = tmp_path / "artifacts" / "fixed-retrieval-eval.json"
+    second_artifact_path = tmp_path / "artifacts" / "fixed-retrieval-eval-second.json"
+
+    artifact = run_fixed_retrieval_eval(artifact_path=artifact_path)
+    second_artifact = run_fixed_retrieval_eval(artifact_path=second_artifact_path)
+
+    assert artifact_path.exists()
+    assert json.loads(artifact_path.read_text(encoding="utf-8")) == artifact
+    assert json.loads(second_artifact_path.read_text(encoding="utf-8")) == second_artifact
+    assert artifact_path.read_text(encoding="utf-8") == second_artifact_path.read_text(
+        encoding="utf-8"
+    )
+    assert artifact["schema_version"] == "mapcode.fixed-retrieval-eval.v1"
+    assert artifact["artifact_type"] == "fixed-retrieval-eval"
+    assert artifact["reproducibility"]["fixture"]["revision"] == "v1"
+    assert artifact["reproducibility"]["fixture"]["snapshot_id"].startswith("sha256:")
+    assert artifact["reproducibility"]["model_request_budget"]["source"] == "fallback"
+    assert artifact["reproducibility"]["execution_budgets"]["max_steps"] == 1
+    assert [case["case_id"] for case in artifact["cases"]] == [
+        "jwt_auth_baseline",
+        "file_specific_auth_py",
+        "symbol_only_jwt_auth",
+        "path_ident_only_pico",
+        "fuzzy_no_signal",
+        "selector_catalog_visibility",
+        "selector_request_over_budget",
+        "selector_failure",
+    ]
+
+    path_case = next(
+        case for case in artifact["cases"] if case["case_id"] == "path_ident_only_pico"
+    )
+    assert path_case["sources"]["map_evidence"] == "run_artifact"
+    assert path_case["sources"]["trace"] == "run_artifact"
+    assert path_case["sources"]["report"] == "run_artifact"
+    assert path_case["fixture"]["git_clean"] is True
+    assert path_case["metrics"]["path_ident_branch_a"] is True
+    assert path_case["metrics"]["focus_files"] == []
+    assert path_case["metrics"]["focus_personalization_files"] == []
+    assert path_case["metrics"]["fallback_budget"]["selector_model_calls"] == 0
+    assert artifact["aggregate"]["effective_path_ident_hit_rate"] == 1.0
+    assert artifact["aggregate"]["effective_path_ident_hit_observed_cases"] == 1

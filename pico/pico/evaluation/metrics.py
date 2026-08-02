@@ -32,6 +32,24 @@ def _safe_ratio(numerator, denominator):
     return numerator / denominator
 
 
+def aggregate_retrieval_eval_cases(cases):
+    """Aggregate observed boolean retrieval facts without treating None as false."""
+
+    rows = list(cases)
+    observed = {}
+    for row in rows:
+        metrics = dict(row.get("metrics", {}))
+        for name, value in metrics.items():
+            if isinstance(value, bool):
+                observed.setdefault(name, []).append(value)
+
+    aggregate = {"case_count": len(rows)}
+    for name, values in sorted(observed.items()):
+        aggregate[f"{name}_rate"] = _safe_ratio(sum(values), len(values))
+        aggregate[f"{name}_observed_cases"] = len(values)
+    return aggregate
+
+
 def _parse_iso8601(value):
     if not value:
         return None

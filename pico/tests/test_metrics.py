@@ -2,6 +2,7 @@ import os
 from unittest.mock import patch
 
 from pico.evaluation.metrics import (
+    aggregate_retrieval_eval_cases,
     measure_feature_ablation_metrics,
     _provider_profile,
     run_context_ablation_v2,
@@ -12,6 +13,35 @@ from pico.evaluation.metrics import (
 from pico.testing import ScriptedModelClient
 from pico import Pico, SessionStore, WorkspaceContext
 from pico.core.context_manager import ContextManager
+
+
+def test_aggregate_retrieval_eval_cases_excludes_unavailable_boolean_facts():
+    aggregate = aggregate_retrieval_eval_cases(
+        [
+            {
+                "metrics": {
+                    "effective_file_hit": True,
+                    "effective_symbol_hit": None,
+                    "path_ident_branch_a": None,
+                }
+            },
+            {
+                "metrics": {
+                    "effective_file_hit": False,
+                    "effective_symbol_hit": True,
+                    "path_ident_branch_a": True,
+                }
+            },
+        ]
+    )
+
+    assert aggregate["case_count"] == 2
+    assert aggregate["effective_file_hit_rate"] == 0.5
+    assert aggregate["effective_file_hit_observed_cases"] == 2
+    assert aggregate["effective_symbol_hit_rate"] == 1.0
+    assert aggregate["effective_symbol_hit_observed_cases"] == 1
+    assert aggregate["path_ident_branch_a_rate"] == 1.0
+    assert aggregate["path_ident_branch_a_observed_cases"] == 1
 
 
 def test_feature_ablation_uses_evaluation_prompt_build_result(tmp_path):
