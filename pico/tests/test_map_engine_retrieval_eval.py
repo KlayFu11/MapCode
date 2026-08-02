@@ -407,6 +407,70 @@ def test_retrieval_metrics_distinguishes_hits_misses_and_broad_rendering(
     assert symbol_metrics.broad_rendering.focus_truncated is False
 
 
+def test_retrieval_metrics_projects_complete_selector_request_scalars(
+    ground_truth: dict[str, object],
+):
+    case = _case(ground_truth, "selector_catalog_visibility")
+    metrics = collect_retrieval_case_metrics(
+        case,
+        None,
+        [
+            {
+                "event": "map_selector_requested",
+                "input_chars": 2_049,
+                "candidate_path_count": 9,
+                "rendered_path_count": 4,
+                "visible_path_count": 5,
+                "definition_count": 18,
+                "rendered_definition_count": 11,
+                "catalog_truncated": True,
+            },
+            {
+                "event": "map_selector_requested",
+                "input_chars": 1_024,
+                "candidate_path_count": 3,
+                "rendered_path_count": 2,
+                "visible_path_count": 2,
+                "definition_count": 7,
+                "rendered_definition_count": 5,
+                "catalog_truncated": False,
+            },
+        ],
+    )
+
+    assert metrics.selector_request is not None
+    assert metrics.selector_request.input_chars == 2_049
+    assert metrics.selector_request.estimated_tokens == 513
+    assert metrics.selector_request.candidate_path_count == 9
+    assert metrics.selector_request.rendered_path_count == 4
+    assert metrics.selector_request.visible_path_count == 5
+    assert metrics.selector_request.definition_count == 18
+    assert metrics.selector_request.rendered_definition_count == 11
+    assert metrics.selector_request.catalog_truncated is True
+
+    historical_metrics = collect_retrieval_case_metrics(
+        case,
+        None,
+        [{"event": "map_selector_requested", "input_chars": 2_048}],
+    )
+
+    assert historical_metrics.selector_request is not None
+    assert historical_metrics.selector_request.estimated_tokens == 512
+    assert historical_metrics.selector_request.definition_count is None
+    assert historical_metrics.selector_request.rendered_definition_count is None
+    assert historical_metrics.selector_request.catalog_truncated is None
+
+    malformed_metrics = collect_retrieval_case_metrics(
+        case,
+        None,
+        [{"event": "map_selector_requested", "input_chars": None}],
+    )
+
+    assert malformed_metrics.selector_request is not None
+    assert malformed_metrics.selector_request.input_chars is None
+    assert malformed_metrics.selector_request.estimated_tokens is None
+
+
 def test_retrieval_metrics_preserves_missing_and_not_applicable_semantics(
     ground_truth: dict[str, object],
 ):
@@ -426,4 +490,5 @@ def test_retrieval_metrics_preserves_missing_and_not_applicable_semantics(
     assert missing.first_read_hit is None
     assert missing.focused_rendering is None
     assert missing.broad_rendering is None
+    assert missing.selector_request is None
     assert missing.top_contributors == ()

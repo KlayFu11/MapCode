@@ -198,6 +198,9 @@ def test_map_retrieval_trace_events_keep_explainable_payloads(tmp_path):
         "candidate_path_count": 4,
         "rendered_path_count": 2,
         "visible_path_count": 3,
+        "definition_count": 9,
+        "rendered_definition_count": 6,
+        "catalog_truncated": True,
         "input_chars": 2048,
         "call_number": 1,
         "budget": {
@@ -252,6 +255,9 @@ def test_map_retrieval_trace_events_keep_explainable_payloads(tmp_path):
     assert selector_event["candidate_path_count"] == 4
     assert selector_event["rendered_path_count"] == 2
     assert selector_event["visible_path_count"] == 3
+    assert selector_event["definition_count"] == 9
+    assert selector_event["rendered_definition_count"] == 6
+    assert selector_event["catalog_truncated"] is True
     assert selector_event["input_chars"] == 2048
     assert selector_event["budget"]["request_over_budget"] is False
     assert selected_event["map_budget_tokens"] == 4096

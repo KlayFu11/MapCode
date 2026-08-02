@@ -18,6 +18,20 @@ class RenderingMetrics:
 
 
 @dataclass(frozen=True)
+class SelectorRequestMetrics:
+    """Scalar evidence for one complete selector model request."""
+
+    input_chars: int | None
+    estimated_tokens: int | None
+    candidate_path_count: int | None
+    rendered_path_count: int | None
+    visible_path_count: int | None
+    definition_count: int | None
+    rendered_definition_count: int | None
+    catalog_truncated: bool | None
+
+
+@dataclass(frozen=True)
 class RankContributorMetrics:
     """One rendered-file contributor projected without changing rank evidence."""
 
@@ -51,6 +65,7 @@ class RetrievalCaseMetrics:
     first_read_hit: bool | None
     focused_rendering: RenderingMetrics | None
     broad_rendering: RenderingMetrics | None
+    selector_request: SelectorRequestMetrics | None
     top_contributors: tuple[RankContributorMetrics, ...]
 
 
@@ -156,6 +171,7 @@ def collect_retrieval_case_metrics(
     broad_rendering = _rendering_for(broad_result, _result_evidence(broad_result), "broad")
     if broad_rendering is None:
         broad_rendering = _rendering_for(active_result, active_evidence, "broad")
+    selector_request = _selector_request_metrics(trace_events)
 
     return RetrievalCaseMetrics(
         effective_file_hit=effective_file_hit,
@@ -177,6 +193,7 @@ def collect_retrieval_case_metrics(
         first_read_hit=first_read_hit,
         focused_rendering=focused_rendering,
         broad_rendering=broad_rendering,
+        selector_request=selector_request,
         top_contributors=_contributors(active_evidence),
     )
 
@@ -341,6 +358,26 @@ def _first_read_path(trace_events: Sequence[Mapping[str, object]]) -> str | None
         if args is not None:
             return _string(args.get("path"))
         return None
+    return None
+
+
+def _selector_request_metrics(
+    trace_events: Sequence[Mapping[str, object]],
+) -> SelectorRequestMetrics | None:
+    for event in trace_events:
+        if _string(event.get("event")) != "map_selector_requested":
+            continue
+        input_chars = _integer(event.get("input_chars"))
+        return SelectorRequestMetrics(
+            input_chars=input_chars,
+            estimated_tokens=(input_chars + 3) // 4 if input_chars is not None else None,
+            candidate_path_count=_integer(event.get("candidate_path_count")),
+            rendered_path_count=_integer(event.get("rendered_path_count")),
+            visible_path_count=_integer(event.get("visible_path_count")),
+            definition_count=_integer(event.get("definition_count")),
+            rendered_definition_count=_integer(event.get("rendered_definition_count")),
+            catalog_truncated=_boolean(event.get("catalog_truncated")),
+        )
     return None
 
 

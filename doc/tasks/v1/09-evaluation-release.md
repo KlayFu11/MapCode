@@ -58,7 +58,7 @@
 - **依赖**：V1-F9-02
 - **输入**：当前最新 SPEC/PRD/FuncFlow、selector/catalog evidence 与 trace
 - **输出**：完整 selector request tokens、visible/candidate/rendered file/definition counts、catalog truncation 指标与 tests
-- **允许修改路径**：retrieval metrics 模块与 tests
+- **允许修改路径**：retrieval metrics 模块与 tests；`engine.py` 既有 `map_selector_requested` 的 catalog 标量摘要与对应 runtime evidence tests
 - **禁止修改边界**：不得复制完整 selector request/catalog 文本到评测结果
 - **步骤**：读取 selector requested 摘要与 catalog evidence；统计完整 `system_prompt + user_prompt` token estimate、visible/candidate/rendered paths 和 truncated 次数。
 - **验证命令**：
