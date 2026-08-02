@@ -471,6 +471,93 @@ def test_retrieval_metrics_projects_complete_selector_request_scalars(
     assert malformed_metrics.selector_request.estimated_tokens is None
 
 
+def test_retrieval_metrics_projects_selector_over_budget_broad_fallback(
+    ground_truth: dict[str, object],
+):
+    case = _case(ground_truth, "selector_request_over_budget")
+    metrics = collect_retrieval_case_metrics(
+        case,
+        {
+            "branch": "fuzzy",
+            "stage": "fallback",
+            "selection_decision": {
+                "fallback_mode": "broad_map",
+                "fallback_reason": "selector_request_over_budget",
+            },
+        },
+        [],
+        {
+            "model_calls": {"selector_model_calls": 0},
+            "request_budget": {"request_over_budget": False},
+        },
+    )
+
+    assert metrics.fallback_budget is not None
+    assert metrics.fallback_budget.selector_model_calls == 0
+    assert metrics.fallback_budget.selector_request_over_budget is True
+    assert metrics.fallback_budget.broad_fallback is True
+    assert metrics.fallback_budget.request_over_budget is False
+
+
+def test_retrieval_metrics_projects_truncation_reduction_and_omission(
+    ground_truth: dict[str, object],
+):
+    case = _case(ground_truth, "file_specific_auth_py")
+    metrics = collect_retrieval_case_metrics(
+        case,
+        {
+            "branch": "specific",
+            "stage": "execution",
+            "active_result": {
+                "mode": "focused",
+                "evidence": {"rendering": {"focus_truncated": True}},
+            },
+            "prompt_injection": {
+                "base_prompt_reduction_applied": True,
+                "section_rendered": False,
+                "omission_reason": "base_prompt_floor",
+            },
+        },
+        [],
+        {
+            "model_calls": {"selector_model_calls": 1},
+            "request_budget": {"request_over_budget": False},
+        },
+    )
+
+    assert metrics.fallback_budget is not None
+    assert metrics.fallback_budget.focus_truncated is True
+    assert metrics.fallback_budget.selector_model_calls == 1
+    assert metrics.fallback_budget.selector_request_over_budget is None
+    assert metrics.fallback_budget.broad_fallback is False
+    assert metrics.fallback_budget.base_prompt_reduction_applied is True
+    assert metrics.fallback_budget.repo_map_section_rendered is False
+    assert metrics.fallback_budget.repo_map_omission_reason == "base_prompt_floor"
+    assert metrics.fallback_budget.request_over_budget is False
+
+
+def test_retrieval_metrics_projects_request_over_budget_without_map_evidence(
+    ground_truth: dict[str, object],
+):
+    case = _case(ground_truth, "selector_request_over_budget")
+    metrics = collect_retrieval_case_metrics(
+        case,
+        None,
+        [],
+        {"request_budget": {"request_over_budget": True}},
+    )
+
+    assert metrics.fallback_budget is not None
+    assert metrics.fallback_budget.focus_truncated is None
+    assert metrics.fallback_budget.selector_model_calls is None
+    assert metrics.fallback_budget.selector_request_over_budget is None
+    assert metrics.fallback_budget.broad_fallback is None
+    assert metrics.fallback_budget.base_prompt_reduction_applied is None
+    assert metrics.fallback_budget.repo_map_section_rendered is None
+    assert metrics.fallback_budget.repo_map_omission_reason is None
+    assert metrics.fallback_budget.request_over_budget is True
+
+
 def test_retrieval_metrics_preserves_missing_and_not_applicable_semantics(
     ground_truth: dict[str, object],
 ):
@@ -491,4 +578,5 @@ def test_retrieval_metrics_preserves_missing_and_not_applicable_semantics(
     assert missing.focused_rendering is None
     assert missing.broad_rendering is None
     assert missing.selector_request is None
+    assert missing.fallback_budget is None
     assert missing.top_contributors == ()

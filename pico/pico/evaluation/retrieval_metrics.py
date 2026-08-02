@@ -32,6 +32,20 @@ class SelectorRequestMetrics:
 
 
 @dataclass(frozen=True)
+class FallbackBudgetMetrics:
+    """Fallback and request-budget facts projected from completed artifacts."""
+
+    focus_truncated: bool | None
+    selector_model_calls: int | None
+    selector_request_over_budget: bool | None
+    broad_fallback: bool | None
+    base_prompt_reduction_applied: bool | None
+    repo_map_section_rendered: bool | None
+    repo_map_omission_reason: str | None
+    request_over_budget: bool | None
+
+
+@dataclass(frozen=True)
 class RankContributorMetrics:
     """One rendered-file contributor projected without changing rank evidence."""
 
@@ -66,6 +80,7 @@ class RetrievalCaseMetrics:
     focused_rendering: RenderingMetrics | None
     broad_rendering: RenderingMetrics | None
     selector_request: SelectorRequestMetrics | None
+    fallback_budget: FallbackBudgetMetrics | None
     top_contributors: tuple[RankContributorMetrics, ...]
 
 
@@ -73,6 +88,7 @@ def collect_retrieval_case_metrics(
     case: Mapping[str, object],
     map_evidence: Mapping[str, object] | None,
     trace_events: Sequence[Mapping[str, object]],
+    report: Mapping[str, object] | None = None,
 ) -> RetrievalCaseMetrics:
     """Interpret structured artifacts without parsing map text or recomputing rank.
 
@@ -172,6 +188,7 @@ def collect_retrieval_case_metrics(
     if broad_rendering is None:
         broad_rendering = _rendering_for(active_result, active_evidence, "broad")
     selector_request = _selector_request_metrics(trace_events)
+    fallback_budget = _fallback_budget_metrics(evidence, active_evidence, report)
 
     return RetrievalCaseMetrics(
         effective_file_hit=effective_file_hit,
@@ -194,6 +211,7 @@ def collect_retrieval_case_metrics(
         focused_rendering=focused_rendering,
         broad_rendering=broad_rendering,
         selector_request=selector_request,
+        fallback_budget=fallback_budget,
         top_contributors=_contributors(active_evidence),
     )
 
@@ -379,6 +397,67 @@ def _selector_request_metrics(
             catalog_truncated=_boolean(event.get("catalog_truncated")),
         )
     return None
+
+
+def _fallback_budget_metrics(
+    evidence: Mapping[str, object] | None,
+    active_evidence: Mapping[str, object] | None,
+    report: Mapping[str, object] | None,
+) -> FallbackBudgetMetrics | None:
+    report = _mapping(report)
+    rendering = _mapping(active_evidence.get("rendering")) if active_evidence else None
+    decision = _mapping(evidence.get("selection_decision")) if evidence else None
+    prompt_injection = _mapping(evidence.get("prompt_injection")) if evidence else None
+    model_calls = _mapping(report.get("model_calls")) if report else None
+    request_budget = _mapping(report.get("request_budget")) if report else None
+
+    if not any(
+        (
+            rendering is not None,
+            decision is not None,
+            evidence is not None and "branch" in evidence and "stage" in evidence,
+            prompt_injection is not None,
+            model_calls is not None,
+            request_budget is not None,
+        )
+    ):
+        return None
+
+    fallback_reason = _string(decision.get("fallback_reason")) if decision else None
+    branch = _string(evidence.get("branch")) if evidence else None
+    stage = _string(evidence.get("stage")) if evidence else None
+    return FallbackBudgetMetrics(
+        focus_truncated=_boolean(rendering.get("focus_truncated")) if rendering else None,
+        selector_model_calls=(
+            _integer(model_calls.get("selector_model_calls")) if model_calls else None
+        ),
+        selector_request_over_budget=(
+            fallback_reason == "selector_request_over_budget"
+            if decision is not None and fallback_reason is not None
+            else None
+        ),
+        broad_fallback=(branch == "fuzzy" and stage == "fallback")
+        if branch is not None and stage is not None
+        else None,
+        base_prompt_reduction_applied=(
+            _boolean(prompt_injection.get("base_prompt_reduction_applied"))
+            if prompt_injection
+            else None
+        ),
+        repo_map_section_rendered=(
+            _boolean(prompt_injection.get("section_rendered"))
+            if prompt_injection
+            else None
+        ),
+        repo_map_omission_reason=(
+            _string(prompt_injection.get("omission_reason")) if prompt_injection else None
+        ),
+        request_over_budget=(
+            _boolean(request_budget.get("request_over_budget"))
+            if request_budget
+            else None
+        ),
+    )
 
 
 def _strings_at(
