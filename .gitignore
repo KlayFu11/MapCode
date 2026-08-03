@@ -13,6 +13,7 @@ __pycache__/
 .env.*
 .DS_Store
 
+
 # 3. 忽略 IDE 配置文件
 .vscode/
 .idea/
@@ -32,11 +33,12 @@ FuncFlow/
 
 # Keep root docs / agent rules / current active fact docs
 !README.md
-!AGENT.md
+!AGENTS.md
 !PRD_v1_2.md
 !FuncFlow_v1_4.md
 !SPEC_v1_4.md
 !experiment_map_engine_dependencies.py
+!V1_to_V2_extensions.md
 
 # Keep selected source directories
 !pico/
@@ -46,7 +48,8 @@ pico/**/*.py[cod]
 pico/*.egg-info/
 pico/.pytest_cache/
 pico/readme_intro_locked/
-
+pico/.env
+pico/.env.*
 
 
 !.gitattributes
