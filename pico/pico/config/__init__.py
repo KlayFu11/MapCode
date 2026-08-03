@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -245,6 +246,7 @@ def resolve_provider_config(
     protocol = _validate_protocol(protocol, provider_name)
 
     env_values = _env_values(provider_name, protocol)
+    sourced_legacy_values = _legacy_values(provider_name, protocol, os.environ)
     legacy_values = _legacy_values(provider_name, protocol, legacy_env)
 
     resolved_model = _first_value(
@@ -252,6 +254,7 @@ def resolve_provider_config(
         os.environ.get(ENV_MODEL),
         env_values.get("model"),
         profile_values.get("model"),
+        sourced_legacy_values.get("model"),
         legacy_env.get(ENV_MODEL),
         legacy_values.get("model"),
         default_values.get("model"),
@@ -261,6 +264,7 @@ def resolve_provider_config(
         os.environ.get(ENV_BASE_URL),
         env_values.get("base_url"),
         profile_values.get("base_url"),
+        sourced_legacy_values.get("base_url"),
         legacy_env.get(ENV_BASE_URL),
         legacy_values.get("base_url"),
         default_values.get("base_url"),
@@ -270,6 +274,7 @@ def resolve_provider_config(
         os.environ.get(ENV_API_KEY),
         env_values.get("api_key"),
         profile_values.get("api_key"),
+        sourced_legacy_values.get("api_key"),
         legacy_env.get(ENV_API_KEY),
         legacy_values.get("api_key"),
         "",
@@ -482,7 +487,7 @@ def _env_values(provider_name: str, protocol: str) -> dict[str, str]:
 
 
 def _legacy_values(
-    provider_name: str, protocol: str, env_values: dict[str, str]
+    provider_name: str, protocol: str, env_values: Mapping[str, str]
 ) -> dict[str, str]:
     values: dict[str, str] = {}
     sources = [LEGACY_ENV_NAMES.get(provider_name, {})]
@@ -504,7 +509,7 @@ def _first_env(names: tuple[str, ...]) -> str:
     return ""
 
 
-def _first_mapping_value(values: dict[str, str], names: tuple[str, ...]) -> str:
+def _first_mapping_value(values: Mapping[str, str], names: tuple[str, ...]) -> str:
     for name in names:
         value = values.get(name)
         if value:

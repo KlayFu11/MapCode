@@ -163,6 +163,8 @@ def _map_context(
     stage: str,
     focus_fnames: tuple[str, ...],
     repo_map_text: str,
+    path_personalization_files: tuple[str, ...] = (),
+    rendered_files: tuple[str, ...] = (),
     fallback_mode: str | None = None,
 ):
     return SimpleNamespace(
@@ -171,6 +173,12 @@ def _map_context(
         active_result=SimpleNamespace(
             focus_fnames=focus_fnames,
             repo_map_text=repo_map_text,
+            evidence=SimpleNamespace(
+                ranking=SimpleNamespace(
+                    path_personalization_files=path_personalization_files,
+                ),
+            ),
+            rendered_files=rendered_files,
             focused_repo_map_string="must not be used",
             focus_fnames_list=("must-not-be-used.py",),
         ),
@@ -214,6 +222,8 @@ def test_render_repo_map_navigation_text_uses_one_template_for_focused_contexts(
             f"\nBranch: {branch}\n"
             "Mode: focused\n"
             f"Focus files (read these first): {focus}\n"
+            "Initial read candidates (read these before unlisted files): "
+            f"{focus}\n"
             f"\n{body}"
         )
         assert "must not be used" not in text
@@ -231,9 +241,72 @@ def test_render_repo_map_navigation_text_renders_exact_broad_fallback_notice():
 
     assert render_repo_map_navigation_text(result).endswith(
         "Focus files (read these first): none\n"
+        "Initial read candidates (read these before unlisted files): none\n"
         "No specific focus files were confirmed. Broad repository context is provided "
         "for navigation.\n\n"
         "broad body"
+    )
+
+
+def test_render_repo_map_navigation_text_uses_path_candidates_when_focus_is_empty():
+    result = _map_context(
+        branch="specific",
+        stage="execution",
+        focus_fnames=(),
+        path_personalization_files=("pico/core/runtime.py", "pico/core/tools.py"),
+        rendered_files=("pico/core/isolated.py", "pico/core/runtime.py"),
+        repo_map_text="path body",
+    )
+
+    text = render_repo_map_navigation_text(result)
+
+    assert (
+        "Initial read candidates (read these before unlisted files): "
+        "pico/core/runtime.py, pico/core/tools.py"
+    ) in text
+    assert "Initial read candidates (read these before unlisted files): pico/core/isolated.py" not in text
+
+
+def test_render_repo_map_navigation_text_prefers_focus_over_other_candidates():
+    result = _map_context(
+        branch="specific",
+        stage="execution",
+        focus_fnames=("src/auth.py",),
+        path_personalization_files=("pico/core/runtime.py",),
+        rendered_files=("pico/core/tools.py",),
+        repo_map_text="focused body",
+    )
+
+    text = render_repo_map_navigation_text(result)
+
+    assert (
+        "Initial read candidates (read these before unlisted files): src/auth.py"
+    ) in text
+    assert "Initial read candidates (read these before unlisted files): pico/core/runtime.py" not in text
+
+
+def test_render_repo_map_navigation_text_uses_rendered_files_then_none():
+    rendered_result = _map_context(
+        branch="specific",
+        stage="execution",
+        focus_fnames=(),
+        rendered_files=("pico/core/runtime.py", "pico/core/tools.py"),
+        repo_map_text="rendered body",
+    )
+    empty_result = _map_context(
+        branch="specific",
+        stage="execution",
+        focus_fnames=(),
+        repo_map_text="empty body",
+    )
+
+    assert (
+        "Initial read candidates (read these before unlisted files): "
+        "pico/core/runtime.py, pico/core/tools.py"
+    ) in render_repo_map_navigation_text(rendered_result)
+    assert (
+        "Initial read candidates (read these before unlisted files): none"
+        in render_repo_map_navigation_text(empty_result)
     )
 
 

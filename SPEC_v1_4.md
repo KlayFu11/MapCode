@@ -1851,6 +1851,7 @@ Repo map content does not satisfy Pico's prior-read or freshness requirement.
 Branch: {branch}
 Mode: {focused | broad_fallback}
 Focus files (read these first): {focus_files_display}
+Initial read candidates (read these before unlisted files): {initial_read_candidates_display}
 {fallback_notice_if_present}
 
 {active_repo_map_text}
@@ -1859,6 +1860,7 @@ Focus files (read these first): {focus_files_display}
 固定契约语义：
 
 - `Focus files (read these first)` 是读取优先级提示，不是已读取证明，也不是编辑授权。
+- `Initial read candidates (read these before unlisted files)` 是 display-only 的软导航偏好，不是 file focus、目录 scope、读取或编辑授权，也不改变现有 `ToolPolicyChecker` 的强制校验。
 - Branch A focused、Branch B confirmed focused 和 Branch B broad fallback 均使用这一份模板；差异只来自 `MapContextResult` 派生出的动态状态与 active result。
 - Branch A 和 Branch B confirmed focused 使用 `Mode: focused`，不显示 fallback notice。
 - broad fallback 使用 `Mode: broad_fallback`，并显示：
@@ -1877,6 +1879,8 @@ No specific focus files were confirmed. Broad repository context is provided for
 MapContextResult
   ├─ branch / stage
   ├─ active_result.focus_fnames
+  ├─ active_result.evidence.ranking.path_personalization_files
+  ├─ active_result.rendered_files
   ├─ active_result.repo_map_text
   └─ selection_decision.fallback_reason
       -> map_context_prompt.py 生成固定契约和动态状态行
@@ -1888,6 +1892,7 @@ MapContextResult
 - `map_context_prompt.py` 只生成文本，不调用模型、不读取仓库、不写 trace/artifact。
 - fallback notice 由结构化 `SelectionDecision` 派生，不能通过搜索 repo map 文本猜测。
 - `{focus_files_display}` 只由 `active_result.focus_fnames` 格式化生成：非空时按原顺序使用 `, ` 连接，空 tuple 时固定为 `none`。
+- `{initial_read_candidates_display}` 只从既有结构化结果派生，不重跑 PromptAnalyzer 或 MapEngine：优先 `active_result.focus_fnames`，其为空时使用已图节点过滤的 `active_result.evidence.ranking.path_personalization_files`，两者均为空时使用 `active_result.rendered_files`；最终为空时固定为 `none`。它不读取原始 `path_ident_hit_files`，不改变 ranking、budget、selector 或工具权限。
 - `{active_repo_map_text}` 只接受 `active_result.repo_map_text`。不得使用 `focused_repo_map_string`，因为 Branch B broad fallback 的 active result 是 broad map。
 - `focus_fnames_list` 不作为模板变量；`focus_fnames` 是结构化 tuple，`focus_files_display` 才是注入文本。
 - 每次 build 的注入 section 摘要进入该次 `PromptBuildResult.metadata.map_context`；只有首次 `purpose="main_model"` 的完整 section 进入 run artifact。

@@ -1017,6 +1017,31 @@ def test_build_agent_uses_deepseek_provider_and_env_configuration(tmp_path):
     assert agent.model_client is fake_client
 
 
+def test_build_agent_uses_process_deepseek_pico_env_aliases_without_dotenv(tmp_path):
+    args = pico_pkg.build_arg_parser().parse_args(
+        ["--cwd", str(tmp_path), "--provider", "deepseek"]
+    )
+
+    with patch.dict(
+        os.environ,
+        {
+            "PICO_DEEPSEEK_API_KEY": "sk-test-process-deepseek",
+            "PICO_DEEPSEEK_API_BASE": "https://api.deepseek.com/anthropic",
+            "PICO_DEEPSEEK_MODEL": "deepseek-v4-pro",
+        },
+        clear=True,
+    ):
+        with patch("pico.cli.AnthropicCompatibleModelClient") as mock_anthropic:
+            fake_client = mock_anthropic.return_value
+            agent = pico_pkg.build_agent(args)
+
+    mock_anthropic.assert_called_once()
+    assert mock_anthropic.call_args.kwargs["model"] == "deepseek-v4-pro"
+    assert mock_anthropic.call_args.kwargs["base_url"] == "https://api.deepseek.com/anthropic"
+    assert mock_anthropic.call_args.kwargs["api_key"] == "sk-test-process-deepseek"
+    assert agent.model_client is fake_client
+
+
 def test_build_agent_uses_provider_profile_protocol_from_project_toml(tmp_path):
     (tmp_path / ".pico.toml").write_text(
         "\n".join(
@@ -1035,7 +1060,15 @@ def test_build_agent_uses_provider_profile_protocol_from_project_toml(tmp_path):
     )
     args = pico_pkg.build_arg_parser().parse_args(["--cwd", str(tmp_path)])
 
-    with patch.dict(os.environ, {"PICO_DEEPSEEK_API_KEY": "sk-legacy-env"}, clear=True):
+    with patch.dict(
+        os.environ,
+        {
+            "PICO_DEEPSEEK_API_KEY": "sk-process-alias-deepseek",
+            "PICO_DEEPSEEK_API_BASE": "https://process-alias.deepseek.example/anthropic",
+            "PICO_DEEPSEEK_MODEL": "process-alias-deepseek-model",
+        },
+        clear=True,
+    ):
         with patch(
             "pico.cli.OpenAICompatibleModelClient",
             side_effect=AssertionError("openai client should not be used"),

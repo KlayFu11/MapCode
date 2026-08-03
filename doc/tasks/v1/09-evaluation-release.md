@@ -126,10 +126,16 @@
 - **输出**：真实 specific 请求演示记录与 artifacts
 - **允许修改路径**：运行 artifacts、当前任务记录、必要用户文档
 - **禁止修改边界**：不得记录密钥或用真实模型结果替代离线断言
-- **步骤**：启用 MapEngine；发出明确文件、symbol-only 和“分析 `pico/` 文件夹内容”path-ident-only 请求；核验 path-ident-only 不调用 selector、`focus_fnames=()`、path-personalized focused map、无 path outbound boost、精确 DefinitionRecord 前缀、4,096-token focused map、首个 read_file、prompt、artifacts、trace/report 和最终请求门禁。
+- **步骤**：从固定 fixture 复制出临时目录，执行 `git init`、`git add` 和最小本地 commit，确保该目录是独立 Git worktree；仅 source 本地 `.env`（不读取、输出或提交其中值），以该临时目录作为 `--cwd` 启用 MapEngine。依次发出明确文件、symbol-only 和“分析 `pico/` 文件夹内容”path-ident-only 请求；核验 path-ident-only 不调用 selector、`focus_fnames=()`、path-personalized focused map、无 path outbound boost、精确 DefinitionRecord 前缀、4,096-token focused map、首个 read_file、prompt、artifacts、trace/report 和最终请求门禁。运行 artifacts 仅保留在临时目录的 `.pico/`，不得进入 Git。
 - **验证命令**：
-  ```powershell
-  .\.venv\Scripts\python.exe -m pico --cwd .\pico\tests\fixtures\map_engine_eval --map-engine "fix token validation in JWTAuth"
+  ```zsh
+  fixture_repo="$(mktemp -d)"
+  cp -R pico/tests/fixtures/map_engine_eval/. "$fixture_repo"
+  git -C "$fixture_repo" init
+  git -C "$fixture_repo" add .
+  git -C "$fixture_repo" -c user.name="MapCode Eval" -c user.email="mapcode-eval@example.invalid" commit -m "temporary evaluation fixture"
+  set -a; source pico/.env; set +a
+  PYTHONPATH=pico .venv/bin/python -m pico --cwd "$fixture_repo" --map-engine --provider deepseek --approval never "fix token validation in JWTAuth"
   ```
 - **完成标准**：真实模型完成文件/symbol/path-ident 三类 Branch A，path-ident 证据链可复盘，敏感信息未落盘。
 - **回退条件**：模型/网络问题无法区分于代码问题，或证据链不完整。

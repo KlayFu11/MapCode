@@ -54,6 +54,7 @@ SPEC > PRD > FuncFlow > doc/tasks > 当前 .planning > 聊天记录
 - trace/evidence/eval 必须保留原始 path ident、全量 `path_ident_hit_files`、图节点过滤、文件级 `prompt_path_ident_hits` 和 Aider-style multiplier/reason codes。
 - 普通分析优先 source 文件，仅在明确需要时选择 test 文件。
 - Branch A、Branch B focused 和 Branch B broad fallback 使用同一主模型导航模板，由 `focus_files_display` 和 `active_repo_map_text` 驱动；主模型不增加 provider-level system prompt。
+- 导航模板额外显示 `Initial read candidates (read these before unlisted files)`：仅作软导航提示，按 `focus_fnames`、已图节点过滤的 `evidence.ranking.path_personalization_files`、`rendered_files` 的首个非空来源取值；不读取原始 `path_ident_hit_files`，不形成 focus、scope 或读取/编辑授权，不影响 ranking、budget、selector 或 ToolPolicyChecker。
 - broad fallback 复用原始请求与 broad map，不重跑 selector、不重新询问用户、不要求重新输入 prompt。
 - `FallbackReason` 包含 `selector_request_over_budget`。
 - `ModelRequestBudget` 解析顺序为 CLI > `[model_request_budget]` > `[providers.<provider>]` profile > fallback。

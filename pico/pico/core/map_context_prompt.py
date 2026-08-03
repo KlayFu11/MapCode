@@ -32,6 +32,9 @@ def render_repo_map_navigation_text(result: MapContextResult | None) -> str:
 
     active_result = result.active_result
     focus_files_display = ", ".join(active_result.focus_fnames) or "none"
+    initial_read_candidates_display = ", ".join(
+        _initial_read_candidates(active_result)
+    ) or "none"
     is_broad_fallback = (
         result.stage == "fallback"
         and result.selection_decision is not None
@@ -42,6 +45,8 @@ def render_repo_map_navigation_text(result: MapContextResult | None) -> str:
         f"Branch: {result.branch}",
         f"Mode: {mode}",
         f"Focus files (read these first): {focus_files_display}",
+        "Initial read candidates (read these before unlisted files): "
+        f"{initial_read_candidates_display}",
     ]
     if is_broad_fallback:
         status_lines.append(BROADER_CONTEXT_FALLBACK_NOTICE)
@@ -55,6 +60,23 @@ def render_repo_map_navigation_text(result: MapContextResult | None) -> str:
             active_result.repo_map_text,
         )
     )
+
+
+def _initial_read_candidates(active_result: object) -> tuple[str, ...]:
+    """Select display-only initial read candidates from finalized map results."""
+    focus_fnames = tuple(getattr(active_result, "focus_fnames", ()))
+    if focus_fnames:
+        return focus_fnames
+
+    evidence = getattr(active_result, "evidence", None)
+    ranking = getattr(evidence, "ranking", None)
+    path_personalization_files = tuple(
+        getattr(ranking, "path_personalization_files", ())
+    )
+    if path_personalization_files:
+        return path_personalization_files
+
+    return tuple(getattr(active_result, "rendered_files", ()))
 
 
 def hash_repo_map_section_text(section_text: str) -> str:
