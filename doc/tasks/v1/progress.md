@@ -5,9 +5,9 @@
 
 ## 当前阶段
 
-- `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成任务重新对齐；阶段 0 环境基线已完成。
+- `vibe-prac` 阶段三：已依据 `SPEC_v1_4.md`、`PRD_v1_2.md`、`FuncFlow_v1_4.md` 完成 v1 全部任务与 release close-out。
 - 事实优先级：`SPEC > PRD > FuncFlow`。
-- 下一可执行任务：`V1-F9-01 建立固定 retrieval fixture 和 ground truth`
+- 下一可执行任务：无。v1 已完成；未经正式规划不得创建或启动 v2。
 
 ## 阶段 0：固定施工地基
 
@@ -124,7 +124,7 @@
 - [x] V1-F9-06 运行完整离线回归和架构边界检查 (P0, 依赖 V1-F9-05)
 - [x] V1-F9-07 使用真实 provider 演示 Branch A 与 path-ident-only (P0, 依赖 V1-F9-06)
 - [x] V1-F9-08 使用真实 provider 演示 Branch B 和预算降级 (P0, 依赖 V1-F9-07)
-- [ ] V1-F9-09 更新 README、配置、演示步骤和项目总进度 (P0, 依赖 V1-F9-08/V1-F8-06)
+- [x] V1-F9-09 更新 README、配置、演示步骤和项目总进度 (P0, 依赖 V1-F9-08/V1-F8-06)
 
 ## 当前阻塞
 
