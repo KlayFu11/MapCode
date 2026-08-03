@@ -123,7 +123,7 @@
 - [x] V1-F9-05 接入 Pico evaluator (P0, 依赖 V1-F9-04)
 - [x] V1-F9-06 运行完整离线回归和架构边界检查 (P0, 依赖 V1-F9-05)
 - [x] V1-F9-07 使用真实 provider 演示 Branch A 与 path-ident-only (P0, 依赖 V1-F9-06)
-- [ ] V1-F9-08 使用真实 provider 演示 Branch B 和预算降级 (P0, 依赖 V1-F9-07)
+- [x] V1-F9-08 使用真实 provider 演示 Branch B 和预算降级 (P0, 依赖 V1-F9-07)
 - [ ] V1-F9-09 更新 README、配置、演示步骤和项目总进度 (P0, 依赖 V1-F9-08/V1-F8-06)
 
 ## 当前阻塞
